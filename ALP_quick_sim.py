@@ -76,8 +76,8 @@ class ALP_sim():
     '''
     
     def __init__(self,
-                 set_obs=1,
-                 set_null=1
+                 set_obs: bool=1,
+                 set_null: bool=1
                  ) -> None:
        
         ''' 
@@ -92,7 +92,7 @@ class ALP_sim():
         '''
         
        
-        # Geom configuration parameters. See method configure_geom().
+        # Geom configuration parameters. See method configure_obs().
         self.emin = 10      #GeV
         self.emax = 1e5     #GeV 
         self.nbins = 50 
@@ -100,9 +100,15 @@ class ALP_sim():
         self.pointing = [150.58,-13.26]
         self.livetime = 250 * u.hr 
         self.irf_file = "$GAMMAPY_DATA/cta-1dc/caldb/data/cta/1dc/bcf/South_z20_50h/irf_file.fits"
+        self._geom_type = "gamma"
         
         # Model configuration parameters. See method configure_model().
+        self.simulate = self.model
+        self._which_model=""
+        self.noise = self.noise_poisson
+        self._which_noise="poisson"
         self.params = [0, 0]
+        self.param_names = ['m','g']
         self.with_bkg = True
         self.with_signal = True
         self.with_bkg_model = True
@@ -114,7 +120,8 @@ class ALP_sim():
         self.ALP_seed = None
         self._floor = None
         self._floor_obs = None
-        
+        self._loc = 0
+        self._noise_sigma = 1
         
 
         # Plot configuration parameters. See method configure_plot().
@@ -129,6 +136,9 @@ class ALP_sim():
         self.fig=None
         self.ax_survival=None
         self.fig_survival=None
+        self._legend=True
+        self._logx = None
+        self._logy = None
          
         # Saved counts, in general computed within class instances, using methods compute_case() or 
         #  generate_null(). But can also be imported, see method import_counts(). 
@@ -176,7 +186,8 @@ class ALP_sim():
                         pointing: Union[list[float],None]="_empty",
                         livetime: Union[float,None]="_empty",
                         irf_file: Union[str,None]="_empty",
-                        to_residuals=True
+                        geom: str="_empty",
+                        new_null: bool=True,
                         ) -> None:
         
         ''' 
@@ -196,7 +207,10 @@ class ALP_sim():
             -  pointing:            2D list, icrs coordinates of target, in degrees.
             -  livetime:            Effective observation time [hours].
             -  irf_file:            Path of IRF file to use.
-            -  to_residuals:        Unless set to false, using configure_obs() will update 
+            -  geom                 ["gamma" (default), "simple" ]. If "gamma", sets up 
+                                    geometry and dataset for gamma observations. if "simple", only
+                                    sets up straight-forward equidistant bin-centers.  
+            -  new_null:            Unless set to false, using configure_obs() will update 
                                     the null-hypothesis (self.counts_null) next time a simulation is
                                     generated in residual mode (activated using 
                                     self.configure_model()). 
@@ -234,21 +248,29 @@ class ALP_sim():
         if irf_file != "_empty" and irf_file != self.irf_file: 
             self.irf_file = irf_file
             model_changed = True
+        if geom != "_empty" and geom != self._geom_type:
+            self._geom_type = geom
+            model_changed = True
         
         self.set_obs()
         
-        if model_changed and to_residuals:
+        if model_changed and new_null:
             self._need_new_null = True
              
     
     def configure_model(self,
-                        params: Union[list[float], None]="_empty",
+                        model: str="_empty",
+                        noise: str="_empty",
+                        params: Union[list[float]]="_empty",
+                        param_names: Union[list[str]]="_empty",
                         bkg: Union[bool,None]="_empty",
                         signal: Union[bool,None]="_empty",
                         logcounts: Union[bool,None]="_empty",
                         residuals: Union[bool,None]="_empty",
                         floor: Union[None,int,float]="_empty",
                         floor_obs: Union[None,int,float]="_empty",
+                        loc: float="_empty",
+                        sigma: float="_empty",
                         nB: Union[int,None]="_empty",
                         ALP_seed="_empty", 
                         new_null=True
@@ -258,11 +280,17 @@ class ALP_sim():
         specified in funciton call stay unchanged.
    
         Input:
+            -  model                Which physical model to simulate when invoking self.simulate.
+                                    Choices are "", "log", "spectral_fit", "spectral_fit_log",
+                                    "toy_line", "toy_poly" and "toy_sine". 
+            -  noise                Which noise model to simulate when invoking self.noise.
+                                    Choices are "poisson" or "gauss".
             -  params:              List of model parameters (parameters of interest and nuisance 
                                     parameters), for use in example simulations (see method 
-                                    compute_case). Can have any dimension up to the number of model 
+                                    self.compute_case). Can have any dimension up to the number of model 
                                     parameters, but must be adapted to parameter expansion function, 
-                                    see method full_params_default(). 
+                                    see method full_params_default().
+            -  param_names:         Names of the parameters, list of strings. Mostly for plotting. 
             -  bkg:                 Whether or not to include cosmic-ray background in simulation.
                                     Changing this here (as opposed to in method configure_obs) is
                                     generally faster.
@@ -277,7 +305,8 @@ class ALP_sim():
             -  floor_obs:           The minimum value for the elements of the histogram that is
                                     generated by the noise function. Lower values are set to this 
                                     minimum value when the noise function is run. 
-            -  edisp:               Whether or not to apply energy dispersion.
+            -  loc:                 Offset of data in x-direction.
+            -  sigma:               Standard deviation of gaussian noise. 
             -  nB:                  [Redundant] Number of B-field realizations to compute
             -  ALP_seed:            Seed for random B-field realizations. Set to other than None for 
                                     reproduction of same realization (?).
@@ -288,49 +317,97 @@ class ALP_sim():
         '''
         
         model_changed = False
-                
-        if params != "_empty" and not np.array_equiv(np.array(params),np.array(self.params)): 
-            self.params = params
+        
+        if model != "_empty" and self._which_model != model: 
+               
+            if model=="":
+                self.simulate=self.model
+            elif model=="log":
+                self.simulate=self.model_log
+            elif model=="spectral_fit":
+                self.simulate=self.model_spectral_fit
+            elif model=="spectral_fit_log":
+                self.simulate=self.model_spectral_fit_log
+            elif model=="toy_line":
+                self.simulate=self.model_toy_line
+            elif model=="toy_poly":
+                self.simulate=self.model_toy_poly
+            elif model=="toy_sine":
+                self.simulate=self.model_toy_sine
+            else:
+                raise ValueError("Invalid model specified")
+
+            self._which_model = model
             model_changed = True
-        if bkg != "_empty" and bkg != self.with_bkg_model: 
-            self.with_bkg_model = bkg
-            model_changed = True
-        if signal != "_empty" and signal != self.with_signal_model: 
-            self.with_signal_model = signal
-            model_changed = True
-        if logcounts != "_empty" and logcounts != self.with_logcounts: 
-            self.with_logcounts = logcounts
-            model_changed = True
-        if residuals != "_empty" and residuals != self.with_residuals: 
-            self.with_residuals = residuals
-            model_changed = True
-        if floor != "_empty" and floor != self._floor: 
-            self._floor = floor
-            model_changed = True
-        if floor_obs != "_empty" and floor_obs != self._floor_obs: 
-            self._floor_obs = floor_obs
-        if nB != "_empty" and nB != self.nB: 
-            self.nB = nB
-            model_changed = True
-        if ALP_seed != "_empty" and ALP_seed != self.ALP_seed: #TODO: standardize ALP_seed when using None for null-hypothesis?
-            self.ALP_seed = ALP_seed
-            model_changed = True
+        
+        if noise != "_empty" and self._which_noise != noise: 
+               
+            if noise=="poisson":
+                self.noise=self.noise_poisson
+            elif noise=="gauss":
+                self.noise=self.noise_gauss
+            else:
+                raise ValueError("Invalid noise model specified")
+
+            self._which_noise = noise
+        
+        with warnings.catch_warnings():
+        
+            warnings.filterwarnings("ignore", category=FutureWarning)
+        
+            if params != "_empty" and not np.array_equiv(np.array(params),np.array(self.params)): 
+                self.params = params
+                model_changed = True
+            if param_names != "_empty" and not np.array_equiv(np.array(param_names),np.array(self.param_names)): 
+                self.param_names = param_names
+            if bkg != "_empty" and bkg != self.with_bkg_model: 
+                self.with_bkg_model = bkg
+                model_changed = True
+            if signal != "_empty" and signal != self.with_signal_model: 
+                self.with_signal_model = signal
+                model_changed = True
+            if logcounts != "_empty" and logcounts != self.with_logcounts: 
+                self.with_logcounts = logcounts
+                model_changed = True
+            if residuals != "_empty" and residuals != self.with_residuals: 
+                self.with_residuals = residuals
+                model_changed = True
+            if floor != "_empty" and floor != self._floor: 
+                self._floor = floor
+                model_changed = True
+            if floor_obs != "_empty" and floor_obs != self._floor_obs: 
+                self._floor_obs = floor_obs
+            if loc != "_empty" and loc != self._loc: 
+                self._loc = loc
+                model_changed = True
+            if sigma != "_empty" and sigma != self._noise_sigma: 
+                self._noise_sigma = sigma
+            if nB != "_empty" and nB != self.nB: 
+                self.nB = nB
+                model_changed = True
+            if ALP_seed != "_empty" and ALP_seed != self.ALP_seed: #TODO: standardize ALP_seed when using None for null-hypothesis?
+                self.ALP_seed = ALP_seed
+                model_changed = True
+            
         if model_changed and new_null:
             self._need_new_null = True
        
 
         #TODO: error band around expected counts? 
-        
+    
         
     def configure_plot(self,
                         xmin: Union[float,None]="_empty",
                         xmax: Union[float,None]="_empty",
                         ymin: Union[float,None]="_empty",
                         ymax: Union[float,None]="_empty",
+                        logx: Union[bool,None]="_empty",
+                        logy: Union[bool,None]="_empty",
                         figsize: Union[tuple[int,int],None]="_empty",
                         fontsize: Union[float,None]="_empty",
-                        dnde: Union[bool,None]="_empty"
-                        ):
+                        dnde: Union[bool,None]="_empty",
+                        legend: bool="_empty"
+                        )-> None:
         
         ''' 
         Sets plot parameters that are unlikely to be changed between consecutive calls of method
@@ -341,19 +418,25 @@ class ALP_sim():
             -  xmax:                Maximum x value of plot, in given unit.
             -  ymin:                Minimum y value of plot, in given unit.
             -  ymax:                Maximum y value of plot, in given unit.
+            -  logx:                Whether to plot on a log scale in x.
+            -  logy:                Whether to plot on a log scale in y.
             -  Figsize:             2D tuple (width, height) of figure.  
             -  Fontsize:            Fontsize of title and axis labels.
             -  dnde:                Plots in terms of counts if 0, and in terms of differential 
                                     counts wrt energy if 1.
+            -  legend:              Whether to include the legend.
         '''
         
         if xmin != "_empty": self.xmin = xmin
         if xmax != "_empty": self.xmax = xmax
         if ymin != "_empty": self.ymin = ymin
         if ymax != "_empty": self.ymax = ymax
+        if logx != "_empty": self._logx = logx
+        if logy != "_empty": self._logy = logy
         if figsize != "_empty": self.figsize = figsize
         if fontsize != "_empty": self.fontsize = fontsize
         if dnde != "_empty": self.dnde = dnde
+        if legend != "_empty": self._legend = legend
         
     
     def import_counts(self,
@@ -389,11 +472,11 @@ class ALP_sim():
             if len(obs_counts['y']) != self.nbins:
                 raise ValueError("Imported observed counts should have same length as self.nbins")
             else:
-                if not np.array_equiv(obs_counts['y'], obs_counts['y'].astype(int)): 
-                    warnings.warn("Imported observed counts should all be integers")
+                # if not np.array_equiv(obs_counts['y'], obs_counts['y'].astype(int)): 
+                #     warnings.warn("Imported observed counts should all be integers")
                 self.counts_obs = obs_counts                
-        else:
-            print("No observed counts specified for import, keeping any old ones")
+        # else:
+        #     print("No observed counts specified for import, keeping any old ones")
             
         
         if not exp_isnone:
@@ -401,8 +484,8 @@ class ALP_sim():
                 self.counts_exp = exp_counts
             else:
                 raise ValueError("Imported expected counts should have same length as self.nbins")
-        else:
-            print("No expected counts specified for import, keeping any old ones")
+        # else:
+        #     print("No expected counts specified for import, keeping any old ones")
             
         
         if not null_isnone:
@@ -410,8 +493,8 @@ class ALP_sim():
                 self.counts_null = null_counts
             else:
                 raise ValueError("Imported null-hypothesis counts should have same length as self.nbins")
-        else:
-            print("No null-hypothesis counts specified for import, keeping any old ones")
+        # else:
+        #     print("No null-hypothesis counts specified for import, keeping any old ones")
         
         self._residuals = are_residuals
     
@@ -548,58 +631,70 @@ class ALP_sim():
         Sets geometry of observations, to be used for generation of fake gamma- and cosmic-ray data.
         '''
         
-        logging.disable(logging.WARNING)
-        emin_TeV = str(self.emin/1000)
-        emax_TeV = str(self.emax/1000)
-
-        energy_axis      = MapAxis.from_energy_bounds( emin_TeV+" TeV", emax_TeV+" TeV", nbin=self.nbins, per_decade=False, name="energy" )
+        if self._geom_type == "gamma":
         
-        if self.with_edisp:
-            energy_axis_true = MapAxis.from_energy_bounds( emin_TeV+" TeV", emax_TeV+" TeV", nbin=self.nbins_etrue, per_decade=False, name="energy_true")
-        else:
-            energy_axis_true = MapAxis.from_energy_bounds( emin_TeV+" TeV", emax_TeV+" TeV", nbin=self.nbins, per_decade=False, name="energy_true")
+            logging.disable(logging.WARNING)
+            emin_TeV = str(self.emin/1000)
+            emax_TeV = str(self.emax/1000)
+    
+            energy_axis      = MapAxis.from_energy_bounds( emin_TeV+" TeV", emax_TeV+" TeV", nbin=self.nbins, per_decade=False, name="energy" )
             
-        migra_axis = MapAxis.from_bounds(0.5, 2, nbin=self.nbins_etrue, node_type="edges", name="migra")
-
-        try:
-            irfs     = load_cta_irfs(self.irf_file)
-            self.point = SkyCoord(self.pointing[0], self.pointing[1], frame="icrs", unit="deg")
-            self.observation = Observation.create(pointing=self.point, livetime=self.livetime, irfs=irfs)
-        except:
-            try:
-                self.observation = Observation.read(self.irf_file)
-                self.point = self.observation.pointing_radec
-                if not isinstance(self.observation,Observation): 
-                    raise TypeError("Loaded object is of type " + str(type(self.observation))+ ", but expected type Observation.")
-            except Exception as e:
-                print(e)
-                raise IOError("Could not load IRF, neither as a CTA IRF, nor as a gammapy Observation.")
+            if self.with_edisp:
+                energy_axis_true = MapAxis.from_energy_bounds( emin_TeV+" TeV", emax_TeV+" TeV", nbin=self.nbins_etrue, per_decade=False, name="energy_true")
+            else:
+                energy_axis_true = MapAxis.from_energy_bounds( emin_TeV+" TeV", emax_TeV+" TeV", nbin=self.nbins, per_decade=False, name="energy_true")
                 
+            migra_axis = MapAxis.from_bounds(0.5, 2, nbin=self.nbins_etrue, node_type="edges", name="migra")
+    
+            try:
+                irfs     = load_cta_irfs(self.irf_file)
+                self.point = SkyCoord(self.pointing[0], self.pointing[1], frame="icrs", unit="deg")
+                self.observation = Observation.create(pointing=self.point, livetime=self.livetime, irfs=irfs)
+            except:
+                try:
+                    self.observation = Observation.read(self.irf_file)
+                    self.point = self.observation.pointing_radec
+                    if not isinstance(self.observation,Observation): 
+                        raise TypeError("Loaded object is of type " + str(type(self.observation))+ ", but expected type Observation.")
+                except Exception as e:
+                    print(e)
+                    raise IOError("Could not load IRF, neither as a CTA IRF, nor as a gammapy Observation.")
+                    
+            
+    
+            geom       = WcsGeom.create(frame="icrs", skydir=self.point, width=(2, 2), binsz=0.02, axes=[energy_axis])
+            d_empty = MapDataset.create(geom, energy_axis_true=energy_axis_true, migra_axis=migra_axis, name="my-dataset")
+    
+    
+            available_irfs = []
+            if 'aeff' in self.observation.available_irfs: available_irfs.append('exposure')
+            if 'edisp' in self.observation.available_irfs and self.with_edisp: available_irfs.append('edisp')
+            if 'bkg' in self.observation.available_irfs and self.with_bkg: available_irfs.append('background')
+    
+            maker   = MapDatasetMaker(selection=available_irfs)
+            self.dataset = maker.run(d_empty, self.observation)
+            
+            bin_axis = 'energy' #if self.with_edisp else 'energy_true'
+            
+            self.bin_centers = np.array(self.dataset.geoms['geom'].axes[bin_axis].center)
+            #self.bin_widths = np.array(self.dataset.geoms['geom'].axes[bin_axis].bin_width)
+            self.bin_centers = self.bin_centers*1000
+            #self.bin_widths = self.bin_widths*1000
+            
+            logging.disable(logging.NOTSET)
         
+        elif self._geom_type == "simple":
+            
+            self.bin_centers = np.linspace(self.emin,self.emax, self.nbins)
+            self.dataset = None
 
-        geom       = WcsGeom.create(frame="icrs", skydir=self.point, width=(2, 2), binsz=0.02, axes=[energy_axis])
-        d_empty = MapDataset.create(geom, energy_axis_true=energy_axis_true, migra_axis=migra_axis, name="my-dataset")
 
-
-        available_irfs = []
-        if 'aeff' in self.observation.available_irfs: available_irfs.append('exposure')
-        if 'edisp' in self.observation.available_irfs and self.with_edisp: available_irfs.append('edisp')
-        if 'bkg' in self.observation.available_irfs and self.with_bkg: available_irfs.append('background')
-
-        maker   = MapDatasetMaker(selection=available_irfs)
-        self.dataset = maker.run(d_empty, self.observation)
-        
-        bin_axis = 'energy' #if self.with_edisp else 'energy_true'
-        
-        self.bin_centers = np.array(self.dataset.geoms['geom'].axes[bin_axis].center)
-        self.bin_widths = np.array(self.dataset.geoms['geom'].axes[bin_axis].bin_width)
-        self.bin_centers = self.bin_centers*1000
-        self.bin_widths = self.bin_widths*1000
-        
-        logging.disable(logging.NOTSET)
+        else:
+            raise ValueError("Invalid geom type. Change by calling \
+                             self.configure_obs(geom=[\"gamma\",\"simple\"])")
+            
 
    
-
     def model(self, 
               params: list[float]
               ) -> dict[str,np.ndarray]:
@@ -704,11 +799,20 @@ class ALP_sim():
         
         # finally we combine source and bkg models
         models = Models( [sky_model_pntpwl,bkg_model] )
-        self.dataset.models = models
+        
+        try:
+            self.dataset.models = models
+        except Exception as Err:
+            if self.dataset == None:
+                raise ValueError("Dataset is None. Run self.configure_obs(geom=\"gamma\")")
+            
 
         if self.with_bkg_model:
             if not 'bkg' in self.observation.available_irfs:
-                raise ValueError("Predicted background counts cannot be requested when background IRF is not available. Check if IRF file contains background, or if the background IRF has been deactivated using the method configure_obs.")
+                raise ValueError("Predicted background counts cannot be requested when background \
+                                 IRF is not available. Check if IRF file contains background, or \
+                                     if the background IRF has been deactivated using the method \
+                                         configure_obs.")
 
 
         if (self.with_signal_model and self.with_signal) and self.with_bkg_model:
@@ -739,6 +843,7 @@ class ALP_sim():
  
         # out = dict(y=np.array(counts))
         
+        np.random.seed()
      
         return out
     
@@ -861,11 +966,19 @@ class ALP_sim():
         
         # finally we combine source and bkg models
         models = Models( [sky_model_pntpwl,bkg_model] )
-        self.dataset.models = models
+        
+        try:
+            self.dataset.models = models
+        except Exception as Err:
+            if self.dataset == None:
+                raise ValueError("Dataset is None. Run self.configure_obs(geom=\"gamma\")")
 
         if self.with_bkg_model:
             if not 'bkg' in self.observation.available_irfs:
-                raise ValueError("Predicted background counts cannot be requested when background IRF is not available. Check if IRF file contains background, or if the background IRF has been deactivated using the method configure_obs.")
+                raise ValueError("Predicted background counts cannot be requested when background \
+                                 IRF is not available. Check if IRF file contains background, or \
+                                     if the background IRF has been deactivated using the method \
+                                         configure_obs.")
 
 
         if (self.with_signal_model and self.with_signal) and self.with_bkg_model:
@@ -922,7 +1035,7 @@ class ALP_sim():
         
         '''
         Function for simulated toy spectrum of the form data=ax+b (without noise), where x is the 
-        bin-number. Takes as input two parameters [a, b], independent of how self.full_param_vec is 
+        bin-center. Takes as input two parameters [a, b], independent of how self.full_param_vec is 
         configured. 
         
         Input:
@@ -930,17 +1043,53 @@ class ALP_sim():
                                 dimension than 2, all elements beyond the second are ignored.
 
         Output:
-            -  out              Linear histogra, as function of bin-number, within a dict.
+            -  out              Linear histogram, as function of bin-number, within a dict,
                                 i.e. {'y': histogram}       
         '''
         
         
-        v = self.full_param_vec(params)
+        v = params.copy()
         
         m = v[0] 
         g = v[1] 
         
-        out = dict(y=np.arange(0,1, 1/self.nbins)*m + g)
+        
+        y = (self.bin_centers-self._loc)*m + g
+        
+        out = dict(y = y)
+    
+        return out
+    
+    
+    def model_toy_poly(self,
+                       params: list[float]
+                       ) -> list[float]: 
+        
+        '''
+        Function for simulated toy spectrum of the form data=ax**2+bx + c (without noise), where x 
+        is the bin-center. Takes as input two parameters [a, b, c], independent of how 
+        self.full_param_vec is configured. 
+        
+        Input:
+            -  params:          List of two model input paramaters [a, b, c]. If input list has 
+                                higher dimension than 3, all elements beyond the second are ignored.
+
+        Output:
+            -  out              Linear polynomial histogram, as function of bin-center, within a 
+                                dict, i.e. {'y': histogram}       
+        '''
+        
+        
+        v = params.copy()
+        
+        a = v[0] 
+        b = v[1]
+        c = v[2]
+        
+        
+        y = (self.bin_centers-self._loc)**2*a + (self.bin_centers-self._loc)*b + c
+        
+        out = dict(y = y)
     
         return out
     
@@ -950,9 +1099,9 @@ class ALP_sim():
                        ) -> list[float]: 
         
         '''
-        Function for simulated toy spectrum of the form data= (bx+d)sin(ax+c) + ex + f + b (with 
-        some calibration constants),without noise, where x is the bin-number. Takes as input six 
-        parameters [a, b, c, d, e, f], independent of how self.full_param_vec is configured. 
+        Function for simulated toy spectrum of the form data = (cx+d)sin(ex+f) + ax+b, without noise, 
+        where x is the bin-number. Takes as input six parameters [a, b, c, d, e, f], independent of 
+        how self.full_param_vec is configured. 
         
         Input:
             -  params:          List of six model input paramaters [a, b, c, d, e, f]. If input list 
@@ -966,12 +1115,18 @@ class ALP_sim():
   
         v = params
         
-        m = v[0] 
-        g = v[1]*0.01
+        a = v[0] 
+        b = v[1]
+        c = v[2]
+        d = v[3]
+        e = v[4]
+        f = v[5]
         
-        x = np.arange(0,8, 8/self.nbins)
+        x = (self.bin_centers-self._loc)
         
-        return dict(y= 100*(-v[4]*x + 8*v[4] +  v[5] + g*8.1  + (-g*x + g*8.1 + v[3])*np.sin(m*x + v[2])))
+        y = a*x + b + (c*x+d)*np.sin(e*x+f)
+        
+        return dict(y=y)
         
 
     def compute_case(self,
@@ -982,11 +1137,15 @@ class ALP_sim():
                      plot_exp: bool=True,
                      plot_survival: bool=False,
                      errorbands: bool=True,
-                     model: str="", 
+                     errors: bool=True,
                      color: str='k', 
                      color_obs: str='k', 
-                     linestyle: str="-", 
-                     legend: bool=True) -> None:
+                     linestyle: str="-",
+                     linestyle_obs: str="-", 
+                     label_exp: bool=True,
+                     label_obs: bool=True,
+                     label_survival: bool=True
+                     ) -> None:
         
         '''
         Function for convenient simulation of example-spectra and consecutive visualization.  
@@ -1011,12 +1170,16 @@ class ALP_sim():
             -  plot_survival:   Whether or not to visualize the photon survival probability 
                                 (separate figure, placed in self.fig_survival). 
             -  errorbands:      Whether or not to plot errorbands around expected counts.
+            -  errors:          Whether or not to plot errorbars around observed counts.
             -  model:           Which model to simulate from. Options: "", "log", "spectral_fit",
                                 "spectral_fit_log", "toy_line", "toy_sine".
             -  color:           Plot color for expected values. 
             -  color_obs:       Plot color for observed values. 
             -  linestyle:       Linestyle for expected values. 
-            -  Legend:          Whether or not to include a legend. 
+            -  linestyle_obs:   Linestyle for observed values. 
+            -  label_exp:       Whether or not to label expected values.
+            -  label_obs:       Whether or not to label observed values.
+            -  label_survival:  Whether or not to label survival probabilities.
 
 
         '''        
@@ -1026,13 +1189,15 @@ class ALP_sim():
         string1=""
         string2=""
         string3="Counts"
-        string4 = "$m = {:.1f} \, \mathrm{{neV}} \mathrm{{,}} \; g = {:.1f} \\times  10^{{-11}} \, \mathrm{{ GeV}}^{{-1}} $".format(self.params[0],self.params[1])
+        string4 = "$"+self.param_names[0]+" = {:.1f} \, \mathrm{{neV}} \mathrm{{,}} \; ".format(self.params[0])+self.param_names[1]+" = {:.1f} \\times  10^{{-11}} \, \mathrm{{ GeV}}^{{-1}} $".format(self.params[1])
         
         
-        mod = model
-        if model != "": mod = "_"+model
+        # mod = model
+        # if model != "": mod = "_"+model
         
-        mod_func = eval("self.model"+mod)
+        # mod_func = eval("self.model"+mod)
+        
+        mod_func = self.simulate
         
 
         if not null:
@@ -1064,16 +1229,23 @@ class ALP_sim():
             # uncertainty = uncertainty + counts_null_plot
             string1 = "Residuals of "
         if self.with_logcounts:
-            with np.errstate(divide='ignore', invalid='ignore'):
-                # print("errorbars: " + str(errorbars))
-                upper_error = np.where(errorbars==-np.inf, 0, np.log10(10**errorbars + np.sqrt(10**errorbars)) - errorbars)
-                lower_error = np.where(errorbars==-np.inf, 0, errorbars - np.log10(10**errorbars - np.sqrt(10**errorbars)))
-                upper_uncertainty = np.where(uncertainty==-np.inf, 0, np.log10(10**uncertainty + np.sqrt(10**uncertainty)) - uncertainty)
-                lower_uncertainty = np.where(uncertainty==-np.inf, 0, uncertainty - np.log10(np.max(np.array([10**uncertainty - np.sqrt(10**uncertainty),np.zeros(len(uncertainty))]),axis=0)))
+            if self._which_noise == "poisson":
+                with np.errstate(divide='ignore', invalid='ignore'):
+                    # print("errorbars: " + str(errorbars))
+                    upper_error = np.where(errorbars==-np.inf, 0, np.log10(10**errorbars + np.sqrt(10**errorbars)) - errorbars)
+                    lower_error = np.where(errorbars==-np.inf, 0, errorbars - np.log10(10**errorbars - np.sqrt(10**errorbars)))
+                    upper_uncertainty = np.where(uncertainty==-np.inf, 0, np.log10(10**uncertainty + np.sqrt(10**uncertainty)) - uncertainty)
+                    lower_uncertainty = np.where(uncertainty==-np.inf, 0, uncertainty - np.log10(np.max(np.array([10**uncertainty - np.sqrt(10**uncertainty),np.zeros(len(uncertainty))]),axis=0)))
+            elif self._which_noise == "gauss":
+                raise NotImplementedError("Not implemented gaussian noise for log of counts")
             string2 = "log of "
         else:
-            lower_error, upper_error = np.sqrt(errorbars), np.sqrt(errorbars)
-            lower_uncertainty, upper_uncertainty = np.sqrt(uncertainty), np.sqrt(uncertainty)
+            if self._which_noise == "poisson":
+                lower_error, upper_error = np.sqrt(errorbars), np.sqrt(errorbars)
+                lower_uncertainty, upper_uncertainty = np.sqrt(uncertainty), np.sqrt(uncertainty)
+            elif self._which_noise == "gauss":
+                lower_error, upper_error = np.ones_like(errorbars)*self._noise_sigma, np.ones_like(errorbars)*self._noise_sigma
+                lower_uncertainty, upper_uncertainty = np.ones_like(uncertainty)*self._noise_sigma, np.ones_like(uncertainty)*self._noise_sigma
 
         # print("Upper_uncertainty: " +  str(upper_uncertainty))     
         
@@ -1156,13 +1328,13 @@ class ALP_sim():
             # print("xmax: " + str(xmax))
             # print("xmin_nonzero: " + str(xmin_nonzero))
         
-            if abs(xmax/xmin_nonzero) > 100 and not xmin < 0: 
+            if self._logx or (self._logx==None and (abs(xmax/xmin_nonzero) > 100 and not xmin < 0)): 
                 self.ax.set_xscale("log")
                 xmin = 0.5*xmin_nonzero
             else:
                 self.ax.set_xscale("linear")
             
-            if abs(ymax/ymin_nonzero) > 100 and not ymin < 0: 
+            if self._logy or (self._logy==None and (abs(ymax/ymin_nonzero) > 100 and not ymin < 0)): 
                 self.ax.set_yscale("log")
                 legend_position="upper right"
                 ymin = 0.5*ymin_nonzero
@@ -1180,10 +1352,39 @@ class ALP_sim():
             ymin=min(ymin,ymin_prev)
             ymax=max(ymax,ymax_prev)
                          
-            self.ax.set_xlim(xmin=xmin)
-            self.ax.set_xlim(xmax=xmax)
-            self.ax.set_ylim(ymin=ymin)
-            self.ax.set_ylim(ymax=ymax)
+            
+            
+            # if not self.xmin: 
+            #     self.ax.set_xlim(xmin=xmin)
+            # else:
+            #     self.ax.set_xlim(xmin=self.xmin)
+            # if not self.xmax: 
+            #     self.ax.set_xlim(xmax=xmax)
+            # else:
+            #     self.ax.set_xlim(xmax=self.xmax)
+            # if not self.ymin: 
+            #     self.ax.set_ylim(ymin=ymin)
+            # else:
+            #     self.ax.set_ylim(ymin=self.ymin)
+            # if not self.ymax: 
+            #     self.ax.set_ylim(ymax=ymax)
+            # else:
+            #     self.ax.set_ylim(ymax=self.ymax)
+            
+            
+            if self.xmin: 
+                self.ax.set_xlim(xmin=self.xmin)
+
+            if self.xmax: 
+                self.ax.set_xlim(xmax=self.xmax)
+
+            if self.ymin: 
+                self.ax.set_ylim(ymin=self.ymin)
+
+            if self.ymax: 
+                self.ax.set_ylim(ymax=self.ymax)
+
+
             
             if self.with_bkg and self.with_bkg_model and self.with_signal and self.with_signal_model and self.with_edisp:
                 appendix = " "
@@ -1204,7 +1405,9 @@ class ALP_sim():
                 # print("counts_exp_plot: " + str(counts_exp_plot))
                 counts_exp_noinf = counts_exp_plot[np.logical_and(counts_exp_plot != -np.inf,counts_exp_plot!=np.inf)]               
                                
-                self.ax.plot(self.bin_centers[counts_exp_plot != -np.inf],counts_exp_noinf,linewidth=2,alpha=0.52,color=color, linestyle=linestyle, label="Expected" + appendix + " [" + string4 + "]" )
+                full_label_exp = "Expected" + appendix + " [" + string4 + "]" if label_exp else None
+                
+                self.ax.plot(self.bin_centers[counts_exp_plot != -np.inf],counts_exp_noinf,linewidth=2,alpha=0.52,color=color, linestyle=linestyle, label=full_label_exp )
                 
                     
                 if errorbands:
@@ -1212,7 +1415,7 @@ class ALP_sim():
                     color_band = self.ax.lines[-1].get_color()
                     color_band = mcolors.to_rgb(color_band)
                     color_band_lightness = 0.7
-                    color_band_light = (color_band[0] + (1-color_band[0])*color_band_lightness,color_band[1]+ (1-color_band[2])*color_band_lightness, color_band[2]+(1-color_band[2])*color_band_lightness)
+                    color_band_light = (color_band[0] + (1-color_band[0])*color_band_lightness,color_band[1]+ (1-color_band[1])*color_band_lightness, color_band[2]+(1-color_band[2])*color_band_lightness)
                     
                     # print(1)
                     # print(lower_uncertainty)
@@ -1240,14 +1443,19 @@ class ALP_sim():
                 upper_error_noinf = lower_error[np.logical_and(counts_obs_plot!=-np.inf,counts_obs_plot!=np.inf)]
                 upper_error_noinf = np.where(upper_error_noinf==np.inf,abs(counts_obs_noinf - ymax),upper_error_noinf)
                           
-                self.ax.errorbar(self.bin_centers[counts_obs_plot != -np.inf], counts_obs_noinf, [lower_error_noinf, upper_error_noinf],fmt='.', c=color_obs, elinewidth=2, markersize=5, capsize=4, label="Simulated"+appendix+"for " + string4 )
-    
+                full_label_obs = "Simulated"+appendix+"for " + string4 if label_obs else None
+                
+                if errors:
+                    self.ax.errorbar(self.bin_centers[counts_obs_plot != -np.inf], counts_obs_noinf, [lower_error_noinf, upper_error_noinf],fmt='.', c=color_obs, elinewidth=2, markersize=5, capsize=4, label=full_label_obs )
+                else:
+                    self.ax.plot(self.bin_centers[counts_obs_plot != -np.inf], counts_obs_noinf, c=color_obs,linestyle=linestyle_obs,label=full_label_obs )
      
 
-            if legend: 
+            if self._legend: 
                 self.ax.legend(loc=legend_position, fontsize=min(9*self.figsize[1]/5, 9*self.figsize[0]/9))
             else:
-                self.ax.legend().set_visible(False)   
+                if self.ax.legend_:
+                        self.ax.legend().remove() 
             
             
         if plot_survival:
@@ -1265,13 +1473,15 @@ class ALP_sim():
             if xmin: self.ax_survival.set_xlim(xmin=xmin)
             if xmax: self.ax_survival.set_xlim(xmax=xmax)
             
+            full_label_survival = r"intrinsic + EBL + ALP ["+self.param_names[0]+" = {:.1f} neV,  "+self.param_names[1]+" = {:.1f} $ \times  10^{{-11 }} / \mathrm{{GeV}} $]".format(self.params[0],self.params[1]) if label_survival else None
+            
             self.ax_survival.plot(self.enpoints_pgg, self.pgg,color=color,linestyle=linestyle, 
-                     label=r"intrinsic + EBL + ALP [m = {:.1f} neV,  g = {:.1f} $ \times  10^{{-11 }} / \mathrm{{GeV}} $]".format(self.params[0],self.params[1]))
+                     label=full_label_survival)
             
             #plt.plot([5e1,5e1],[0,1.5], c='0.5', linestyle='--', label="Range in paper")
             #plt.plot([2.8e4,2.8e4],[0,1.5], c='0.5', linestyle='--' )
             
-            if legend:
+            if self._legend:
                 self.ax_survival.legend(loc=legend_position, fontsize=min(9*self.figsize[1]/5, 9*self.figsize[0]/9))
             else:
                 self.ax_survival.legend().set_visible(False)
@@ -1282,7 +1492,7 @@ class ALP_sim():
             
 
         
-    def noise(self,
+    def noise_poisson(self,
               sim: dict[str,np.ndarray], 
               params: list[float]
               ) -> dict[str,np.ndarray]:
@@ -1326,6 +1536,69 @@ class ALP_sim():
                         d = np.where(d==0,-np.inf,np.log10(d))  
                 else: 
                     d = np.random.poisson(d)
+            
+            if self._floor_obs !=None: d = np.where(d<self._floor_obs,self._floor_obs,d)
+            
+            
+        except ValueError as e:
+            print('ValueError in noise function, for the following simulation:')
+            print()
+            print("Sim values: " + str(sim))
+            print()
+            print("Parameter values: ")
+            for i, vel in enumerate(params):
+                print("v["+str(i)+"]: "+str(vel))
+            return {}
+            
+            raise e
+        
+        return dict(y=d)
+    
+    
+    def noise_gauss(self,
+              sim: dict[str,np.ndarray], 
+              params: list[float]
+              ) -> dict[str,np.ndarray]:
+        
+        '''
+        Adds gaussian noise to an observation.  
+        
+        Input:
+            -  sim:             Observation of the form {'y': np.array}  
+            -  params:          Input parameters that produced the observation (required by SWYFT,
+                                and helpful if error).  
+
+        Output:
+            -  out              Observations with noise. 
+        ''' 
+
+        try:
+            d = sim['y'].astype(np.float64)
+            
+            if self.with_residuals:
+                
+                # d = d + self.counts_null['y']
+                d = self.subtract_null(d,add=True)['y']
+                
+                if self.with_logcounts: 
+                    d = 10**d
+                    d = d + np.random.randn(self.nbins)*self._noise_sigma    
+                    with np.errstate(divide='ignore', invalid='ignore'): 
+                        d = np.where(d==0,-np.inf,np.log10(d))
+                else: 
+                    d = d + np.random.randn(self.nbins)*self._noise_sigma 
+            
+                # d = d - self.counts_null['y']
+                d = self.subtract_null(d,add=False)['y']
+           
+            else:
+                if self.with_logcounts: 
+                    d = 10**d
+                    d = d = d + np.random.randn(self.nbins)*self._noise_sigma 
+                    with np.errstate(divide='ignore', invalid='ignore'):
+                        d = np.where(d==0,-np.inf,np.log10(d))  
+                else: 
+                    d = d + np.random.randn(self.nbins)*self._noise_sigma 
             
             if self._floor_obs !=None: d = np.where(d<self._floor_obs,self._floor_obs,d)
             
