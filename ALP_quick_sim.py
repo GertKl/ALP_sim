@@ -109,6 +109,7 @@ class ALP_sim():
         self._which_noise="poisson"
         self.params = [0, 0]
         self.param_names = ['m','g']
+        self.null_params = [0, 0]
         self.with_bkg = True
         self.with_signal = True
         self.with_bkg_model = True
@@ -144,7 +145,7 @@ class ALP_sim():
         #  generate_null(). But can also be imported, see method import_counts(). 
         self.counts_obs = None
         self.counts_exp = None
-        self.counts_null = None
+        self._counts_null = None
 
         # Parameter expansion function. See method full_params_default.  
         self.full_param_vec = ALP_sim.full_params_default
@@ -173,20 +174,28 @@ class ALP_sim():
             else:
                 self.generate_null()
     
+    
+
+    @property
+    def counts_null(self):
+        if self._need_new_null:
+            self.generate_null()
         
+        return self._counts_null
+    
     
     def configure_obs(self,
-                        signal: Union[bool,None]="_empty",
-                        edisp: Union[bool,None]="_empty",
-                        bkg: Union[bool,None]="_empty",
-                        emin: Union[float,None]="_empty",
-                        emax: Union[float,None]="_empty",
-                        nbins: Union[int,None]="_empty",
-                        nbins_etrue: Union[int,None]="_empty",
-                        pointing: Union[list[float],None]="_empty",
-                        livetime: Union[float,None]="_empty",
-                        irf_file: Union[str,None]="_empty",
-                        geom: str="_empty",
+                        signal: Union[bool,None]="__empty__",
+                        edisp: Union[bool,None]="__empty__",
+                        bkg: Union[bool,None]="__empty__",
+                        emin: Union[float,None]="__empty__",
+                        emax: Union[float,None]="__empty__",
+                        nbins: Union[int,None]="__empty__",
+                        nbins_etrue: Union[int,None]="__empty__",
+                        pointing: Union[list[float],None]="__empty__",
+                        livetime: Union[float,None]="__empty__",
+                        irf_file: Union[str,None]="__empty__",
+                        geom: str="__empty__",
                         new_null: bool=True,
                         ) -> None:
         
@@ -218,37 +227,37 @@ class ALP_sim():
         
         model_changed = False
         
-        if bkg != "_empty" and bkg != self.with_bkg: 
+        if bkg != "__empty__" and bkg != self.with_bkg: 
             self.with_bkg = bkg
             model_changed = True
-        if signal != "_empty" and signal != self.with_signal: 
+        if signal != "__empty__" and signal != self.with_signal: 
             self.with_signal = signal
             model_changed = True
-        if edisp != "_empty" and edisp != self.with_edisp: 
+        if edisp != "__empty__" and edisp != self.with_edisp: 
             self.with_edisp = edisp
             model_changed = True
-        if emin != "_empty" and emin != self.emin: 
+        if emin != "__empty__" and emin != self.emin: 
             self.emin = emin
             model_changed = True
-        if emax != "_empty" and emax != self.emax: 
+        if emax != "__empty__" and emax != self.emax: 
             self.emax = emax
             model_changed = True
-        if nbins != "_empty" and nbins != self.nbins: 
+        if nbins != "__empty__" and nbins != self.nbins: 
             self.nbins = nbins
             model_changed = True
-        if nbins_etrue != "_empty" and nbins_etrue != self.nbins_etrue: 
+        if nbins_etrue != "__empty__" and nbins_etrue != self.nbins_etrue: 
             self.nbins_etrue = nbins_etrue
             model_changed = True
-        if pointing != "_empty" and pointing != self.pointing: 
+        if pointing != "__empty__" and pointing != self.pointing: 
             self.pointing = pointing
             model_changed = True
-        if livetime != "_empty" and livetime != self.livetime: 
+        if livetime != "__empty__" and livetime != self.livetime: 
             self.livetime = livetime * u.hr
             model_changed = True
-        if irf_file != "_empty" and irf_file != self.irf_file: 
+        if irf_file != "__empty__" and irf_file != self.irf_file: 
             self.irf_file = irf_file
             model_changed = True
-        if geom != "_empty" and geom != self._geom_type:
+        if geom != "__empty__" and geom != self._geom_type:
             self._geom_type = geom
             model_changed = True
         
@@ -259,20 +268,21 @@ class ALP_sim():
              
     
     def configure_model(self,
-                        model: str="_empty",
-                        noise: str="_empty",
-                        params: Union[list[float]]="_empty",
-                        param_names: Union[list[str]]="_empty",
-                        bkg: Union[bool,None]="_empty",
-                        signal: Union[bool,None]="_empty",
-                        logcounts: Union[bool,None]="_empty",
-                        residuals: Union[bool,None]="_empty",
-                        floor: Union[None,int,float]="_empty",
-                        floor_obs: Union[None,int,float]="_empty",
-                        loc: float="_empty",
-                        sigma: float="_empty",
-                        nB: Union[int,None]="_empty",
-                        ALP_seed="_empty", 
+                        model: str="__empty__",
+                        noise: str="__empty__",
+                        params: list[float]="__empty__",
+                        param_names: list[str]="__empty__",
+                        null_params: list[float]="__empty__",
+                        bkg: Union[bool,None]="__empty__",
+                        signal: Union[bool,None]="__empty__",
+                        logcounts: Union[bool,None]="__empty__",
+                        residuals: Union[bool,None]="__empty__",
+                        floor: Union[None,int,float]="__empty__",
+                        floor_obs: Union[None,int,float]="__empty__",
+                        loc: float="__empty__",
+                        sigma: float="__empty__",
+                        nB: Union[int,None]="__empty__",
+                        ALP_seed="__empty__", 
                         new_null=True
                         ) -> None:
         ''' 
@@ -290,7 +300,8 @@ class ALP_sim():
                                     self.compute_case). Can have any dimension up to the number of model 
                                     parameters, but must be adapted to parameter expansion function, 
                                     see method full_params_default().
-            -  param_names:         Names of the parameters, list of strings. Mostly for plotting. 
+            -  param_names:         Names of the parameters, list of strings. Mostly for plotting.
+            -  null_params:         Parameter values of the null-hypothesis.
             -  bkg:                 Whether or not to include cosmic-ray background in simulation.
                                     Changing this here (as opposed to in method configure_obs) is
                                     generally faster.
@@ -318,7 +329,7 @@ class ALP_sim():
         
         model_changed = False
         
-        if model != "_empty" and self._which_model != model: 
+        if model != "__empty__" and self._which_model != model: 
                
             if model=="":
                 self.simulate=self.model
@@ -339,8 +350,13 @@ class ALP_sim():
 
             self._which_model = model
             model_changed = True
+            
+            if null_params =="__empty__":
+                warnings.warn("The model was changed without changing the parameters for the \
+                              null hypothesis")
+            
         
-        if noise != "_empty" and self._which_noise != noise: 
+        if noise != "__empty__" and self._which_noise != noise: 
                
             if noise=="poisson":
                 self.noise=self.noise_poisson
@@ -355,37 +371,40 @@ class ALP_sim():
         
             warnings.filterwarnings("ignore", category=FutureWarning)
         
-            if params != "_empty" and not np.array_equiv(np.array(params),np.array(self.params)): 
+            if params != "__empty__" and not np.array_equiv(np.array(params),np.array(self.params)): 
                 self.params = params
                 model_changed = True
-            if param_names != "_empty" and not np.array_equiv(np.array(param_names),np.array(self.param_names)): 
+            if param_names != "__empty__" and not np.array_equiv(np.array(param_names),np.array(self.param_names)): 
                 self.param_names = param_names
-            if bkg != "_empty" and bkg != self.with_bkg_model: 
+            if null_params != "__empty__" and not np.array_equiv(np.array(null_params),np.array(self.null_params)): 
+                self.null_params = null_params
+                model_changed = True
+            if bkg != "__empty__" and bkg != self.with_bkg_model: 
                 self.with_bkg_model = bkg
                 model_changed = True
-            if signal != "_empty" and signal != self.with_signal_model: 
+            if signal != "__empty__" and signal != self.with_signal_model: 
                 self.with_signal_model = signal
                 model_changed = True
-            if logcounts != "_empty" and logcounts != self.with_logcounts: 
+            if logcounts != "__empty__" and logcounts != self.with_logcounts: 
                 self.with_logcounts = logcounts
                 model_changed = True
-            if residuals != "_empty" and residuals != self.with_residuals: 
+            if residuals != "__empty__" and residuals != self.with_residuals: 
                 self.with_residuals = residuals
                 model_changed = True
-            if floor != "_empty" and floor != self._floor: 
+            if floor != "__empty__" and floor != self._floor: 
                 self._floor = floor
                 model_changed = True
-            if floor_obs != "_empty" and floor_obs != self._floor_obs: 
+            if floor_obs != "__empty__" and floor_obs != self._floor_obs: 
                 self._floor_obs = floor_obs
-            if loc != "_empty" and loc != self._loc: 
+            if loc != "__empty__" and loc != self._loc: 
                 self._loc = loc
                 model_changed = True
-            if sigma != "_empty" and sigma != self._noise_sigma: 
+            if sigma != "__empty__" and sigma != self._noise_sigma: 
                 self._noise_sigma = sigma
-            if nB != "_empty" and nB != self.nB: 
+            if nB != "__empty__" and nB != self.nB: 
                 self.nB = nB
                 model_changed = True
-            if ALP_seed != "_empty" and ALP_seed != self.ALP_seed: #TODO: standardize ALP_seed when using None for null-hypothesis?
+            if ALP_seed != "__empty__" and ALP_seed != self.ALP_seed: #TODO: standardize ALP_seed when using None for null-hypothesis?
                 self.ALP_seed = ALP_seed
                 model_changed = True
             
@@ -397,16 +416,16 @@ class ALP_sim():
     
         
     def configure_plot(self,
-                        xmin: Union[float,None]="_empty",
-                        xmax: Union[float,None]="_empty",
-                        ymin: Union[float,None]="_empty",
-                        ymax: Union[float,None]="_empty",
-                        logx: Union[bool,None]="_empty",
-                        logy: Union[bool,None]="_empty",
-                        figsize: Union[tuple[int,int],None]="_empty",
-                        fontsize: Union[float,None]="_empty",
-                        dnde: Union[bool,None]="_empty",
-                        legend: bool="_empty"
+                        xmin: Union[float,None]="__empty__",
+                        xmax: Union[float,None]="__empty__",
+                        ymin: Union[float,None]="__empty__",
+                        ymax: Union[float,None]="__empty__",
+                        logx: Union[bool,None]="__empty__",
+                        logy: Union[bool,None]="__empty__",
+                        figsize: Union[tuple[int,int],None]="__empty__",
+                        fontsize: Union[float,None]="__empty__",
+                        dnde: Union[bool,None]="__empty__",
+                        legend: bool="__empty__"
                         )-> None:
         
         ''' 
@@ -427,16 +446,16 @@ class ALP_sim():
             -  legend:              Whether to include the legend.
         '''
         
-        if xmin != "_empty": self.xmin = xmin
-        if xmax != "_empty": self.xmax = xmax
-        if ymin != "_empty": self.ymin = ymin
-        if ymax != "_empty": self.ymax = ymax
-        if logx != "_empty": self._logx = logx
-        if logy != "_empty": self._logy = logy
-        if figsize != "_empty": self.figsize = figsize
-        if fontsize != "_empty": self.fontsize = fontsize
-        if dnde != "_empty": self.dnde = dnde
-        if legend != "_empty": self._legend = legend
+        if xmin != "__empty__": self.xmin = xmin
+        if xmax != "__empty__": self.xmax = xmax
+        if ymin != "__empty__": self.ymin = ymin
+        if ymax != "__empty__": self.ymax = ymax
+        if logx != "__empty__": self._logx = logx
+        if logy != "__empty__": self._logy = logy
+        if figsize != "__empty__": self.figsize = figsize
+        if fontsize != "__empty__": self.fontsize = fontsize
+        if dnde != "__empty__": self.dnde = dnde
+        if legend != "__empty__": self._legend = legend
         
     
     def import_counts(self,
@@ -490,7 +509,8 @@ class ALP_sim():
         
         if not null_isnone:
             if len(null_counts['y']) == self.nbins:
-                self.counts_null = null_counts
+                self._counts_null = null_counts
+                self._need_new_null = False
             else:
                 raise ValueError("Imported null-hypothesis counts should have same length as self.nbins")
         # else:
@@ -500,62 +520,54 @@ class ALP_sim():
     
     
     def generate_null(self, 
-                      params: list[float]=[],
-                      model: str="",
-                      ) -> dict[str,np.ndarray]:
+                      #params: list[float] =[],
+                      ): #-> dict[str,np.ndarray]:
         
-        ''' 
+        # ''' 
 
+        print("Generating new null-hypothesis... ",end="")
+        # Input:
+        #     - params:           Input parameters corresponding to chosen null hypothesis. 
+        # '''
         
-        Input:
-            - params:           Input parameters corresponding to chosen null hypothesis. If left
-                                empty, will correspond to [m,g] = [0,0], and nuisance parameters set
-                                to default values. 
-            - model:            Which simulation model to run. Choices are "", "log", "spectral_fit",
-                                "spectral_fit_log", "toy_line" and "toy_sine". Default is "".
-        '''
-        
-        if isinstance(params,list) or isinstance(params,np.ndarray):
-            if len(params) > 0:
-                params_use = params
-            else:
-                params_use = self.params.copy()
-                params_use[0] = 0
-                params_use[1] = 0
-        else:
-            raise TypeError("Params are of unexpected type. Expected list or numpy array.")
+        # if isinstance(params,list) or isinstance(params,np.ndarray):
+        #     if len(params) > 0:
+        #         params_use = params
+        #     else:
+        #         params_use = self.params.copy()
+        #         params_use[0] = 0
+        #         params_use[1] = 0
+        # else:
+        #     raise TypeError("Params are of unexpected type. Expected list or numpy array.")
             
-            
-        mod = model
-        if model != "": mod = "_"+model
         
-        try:
-            mod_func = eval("self.model"+mod)
-                       
-        except AttributeError as AttrErr:
-            if self.counts_null == None:
-                self.generate_null()
-                # print("counts_null: " + str(self.counts_null))
-                if self.counts_null == None:
-                    raise ValueError("self.generate_null() did not result in self.counts_null that\
-                                     are not None.")
-            else:
-                raise AttrErr
-    
-        
+        # if self.counts_null == None:
+        #     self.generate_null()
+        #     # print("counts_null: " + str(self.counts_null))
+        #     if self.counts_null == None:
+        #         raise ValueError("self.generate_null() did not result in self.counts_null that\
+        #                          are not None.")
+
+        need_new_null_current = self._need_new_null.copy()
         self._need_new_null=False
         
         if self.with_residuals:
             self.with_residuals=False
             try:
-                self.counts_null = mod_func(params_use)
+                self._counts_null = self.simulate(self.null_params)
                 self.with_residuals=True
             except Exception as Err:
                 self.with_residuals=True
+                self._need_new_null = need_new_null_current
                 raise Err
         else:
-            self.counts_null = mod_func(params_use)
+            try:
+                self._counts_null = self.simulate(self.null_params)
+            except Exception as Err:
+                self._need_new_null = need_new_null_current
+                raise Err
         
+        print("done.")
         
 
     def subtract_null(self,
@@ -663,7 +675,7 @@ class ALP_sim():
             
     
             geom       = WcsGeom.create(frame="icrs", skydir=self.point, width=(2, 2), binsz=0.02, axes=[energy_axis])
-            d_empty = MapDataset.create(geom, energy_axis_true=energy_axis_true, migra_axis=migra_axis, name="my-dataset")
+            d__empty__ = MapDataset.create(geom, energy_axis_true=energy_axis_true, migra_axis=migra_axis, name="my-dataset")
     
     
             available_irfs = []
@@ -672,7 +684,7 @@ class ALP_sim():
             if 'bkg' in self.observation.available_irfs and self.with_bkg: available_irfs.append('background')
     
             maker   = MapDatasetMaker(selection=available_irfs)
-            self.dataset = maker.run(d_empty, self.observation)
+            self.dataset = maker.run(d__empty__, self.observation)
             
             bin_axis = 'energy' #if self.with_edisp else 'energy_true'
             
@@ -880,8 +892,8 @@ class ALP_sim():
                 out = np.where(out==0,-np.inf,np.log10(out))
 
         if self.with_residuals: 
-            if self._need_new_null: 
-                self.generate_null()
+            # if self._need_new_null: 
+            #     self.generate_null()
             out = self.subtract_null(out)['y']
             
         
@@ -1208,7 +1220,7 @@ class ALP_sim():
             counts_exp_plot = self.counts_exp['y']
             counts_obs_plot = self.counts_obs['y']
         else:
-            if new_counts or (new_counts==None and self._need_new_null): self.generate_null()
+            #if new_counts or (new_counts==None and self._need_new_null): self.generate_null()
             counts_exp_plot = self.counts_null
             if self.with_residuals: counts_exp_plot = self.subtract_null(counts_exp_plot)
             counts_obs_plot = self.noise(counts_exp_plot, self.params)['y']
