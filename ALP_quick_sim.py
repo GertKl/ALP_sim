@@ -373,7 +373,6 @@ class ALP_sim():
         
             if params != "__empty__" and not np.array_equiv(np.array(params),np.array(self.params)): 
                 self.params = params
-                model_changed = True
             if param_names != "__empty__" and not np.array_equiv(np.array(param_names),np.array(self.param_names)): 
                 self.param_names = param_names
             if null_params != "__empty__" and not np.array_equiv(np.array(null_params),np.array(self.null_params)): 
@@ -390,7 +389,7 @@ class ALP_sim():
                 model_changed = True
             if residuals != "__empty__" and residuals != self.with_residuals: 
                 self.with_residuals = residuals
-                model_changed = True
+                #model_changed = True
             if floor != "__empty__" and floor != self._floor: 
                 self._floor = floor
                 model_changed = True
@@ -548,7 +547,7 @@ class ALP_sim():
         #         raise ValueError("self.generate_null() did not result in self.counts_null that\
         #                          are not None.")
 
-        need_new_null_current = self._need_new_null.copy()
+        need_new_null_current = self._need_new_null
         self._need_new_null=False
         
         if self.with_residuals:
@@ -1213,7 +1212,7 @@ class ALP_sim():
         
 
         if not null:
-            if new_counts or self._need_new_null:
+            if new_counts: # or self._need_new_null:
                 self.counts_exp = mod_func(self.params)
                 self.counts_obs = self.noise(self.counts_exp, self.params)
                 if self.with_residuals: self._residuals = True
@@ -1462,13 +1461,14 @@ class ALP_sim():
                 else:
                     self.ax.plot(self.bin_centers[counts_obs_plot != -np.inf], counts_obs_noinf, c=color_obs,linestyle=linestyle_obs,label=full_label_obs )
      
+        
 
             if self._legend: 
                 self.ax.legend(loc=legend_position, fontsize=min(9*self.figsize[1]/5, 9*self.figsize[0]/9))
             else:
                 if self.ax.legend_:
                         self.ax.legend().remove() 
-            
+        
             
         if plot_survival:
             
