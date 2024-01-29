@@ -373,7 +373,6 @@ class ALP_sim():
         
             if params != "__empty__" and not np.array_equiv(np.array(params),np.array(self.params)): 
                 self.params = params
-                model_changed = True
             if param_names != "__empty__" and not np.array_equiv(np.array(param_names),np.array(self.param_names)): 
                 self.param_names = param_names
             if null_params != "__empty__" and not np.array_equiv(np.array(null_params),np.array(self.null_params)): 
@@ -548,7 +547,7 @@ class ALP_sim():
         #         raise ValueError("self.generate_null() did not result in self.counts_null that\
         #                          are not None.")
 
-        need_new_null_current = self._need_new_null.copy()
+        need_new_null_current = self._need_new_null
         self._need_new_null=False
         
         if self.with_residuals:
