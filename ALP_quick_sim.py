@@ -109,6 +109,7 @@ class ALP_sim():
         self._which_noise="poisson"
         self.params = [0, 0]
         self.param_names = ['m','g']
+        self.param_units=  ['nev','\\times  10^{{-11}} \, \mathrm{{ GeV}}^{{-1}}']
         self.null_params = [0, 0]
         self.with_bkg = True
         self.with_signal = True
@@ -373,9 +374,9 @@ class ALP_sim():
         
             if params != "__empty__" and not np.array_equiv(np.array(params),np.array(self.params)): 
                 self.params = params
-            if param_names != "__empty__" and not np.array_equiv(np.array(param_names),np.array(self.param_names)): 
+            if param_names != "__empty__" and not (np.array_equiv(np.array(param_names),np.array(self.param_names))and len(null_params)==len(self.null_params)): 
                 self.param_names = param_names
-            if null_params != "__empty__" and not np.array_equiv(np.array(null_params),np.array(self.null_params)): 
+            if null_params != "__empty__" and not (np.array_equiv(np.array(null_params),np.array(self.null_params)) and len(null_params)==len(self.null_params)): 
                 self.null_params = null_params
                 model_changed = True
             if bkg != "__empty__" and bkg != self.with_bkg_model: 
@@ -727,6 +728,7 @@ class ALP_sim():
         
         v = self.full_param_vec(params)
         
+        
         v[17] = -v[17]
         
         m = v[0] * 1e-9 * u.eV
@@ -924,7 +926,7 @@ class ALP_sim():
         new_v = params.copy()
    
         for i, param in enumerate(new_v):  
-            new_v[i] = 10**param
+            new_v[i] = 10.**param
         
         out = self.model(new_v)
         
@@ -1033,7 +1035,7 @@ class ALP_sim():
         new_v = params.copy()
         
         for i, param in enumerate(new_v): 
-            new_v[i] = 10**param
+            new_v[i] = 10.**param
 
         out = self.model_spectral_fit(new_v)
         
@@ -1155,7 +1157,8 @@ class ALP_sim():
                      linestyle_obs: str="-", 
                      label_exp: bool=True,
                      label_obs: bool=True,
-                     label_survival: bool=True
+                     label_survival: bool=True,
+                     transparency: float=0
                      ) -> None:
         
         '''
@@ -1197,12 +1200,20 @@ class ALP_sim():
         
         
         # Strings for labels, to be modified depending on input arguments. 
+        
         string1=""
         string2=""
         string3="Counts"
-        string4 = "$"+self.param_names[0]+" = {:.1f} \, \mathrm{{neV}} \mathrm{{,}} \; ".format(self.params[0])+self.param_names[1]+" = {:.1f} \\times  10^{{-11}} \, \mathrm{{ GeV}}^{{-1}} $".format(self.params[1])
+        string4 = "" 
         
+        # if len(self.params)>1 and len(self.param_names)>1:
+        #     string4 = "$"+self.param_names[0]+" = {:.1f} \, \mathrm{{neV}} \mathrm{{,}} \; ".format(self.params[0])+self.param_names[1]+" = {:.1f} \\times  10^{{-11}} \, \mathrm{{ GeV}}^{{-1}} $".format(self.params[1])
+        # else:
+        #     string4 = ""
         
+
+            
+
         # mod = model
         # if model != "": mod = "_"+model
         
@@ -1218,6 +1229,18 @@ class ALP_sim():
                 if self.with_residuals: self._residuals = True
             counts_exp_plot = self.counts_exp['y']
             counts_obs_plot = self.counts_obs['y']
+            
+            if self._which_model in ["log", "spectral_fit_log"]:
+                explicit_params = 10.**np.array(self.params)
+            else:
+                explicit_params = self.params.copy()
+                
+            for i,p in enumerate(explicit_params):
+                if i != len(self.params)-1:
+                    string4 = string4 + "$"+self.param_names[i]+" = {:.1f} \, \mathrm{{".format(p)+self.param_units[i]+"}} $ , "
+                else:
+                    string4 = string4 + "$"+self.param_names[i]+" = {:.1f} \, \mathrm{{".format(p)+self.param_units[i]+"}}$"
+            
         else:
             #if new_counts or (new_counts==None and self._need_new_null): self.generate_null()
             counts_exp_plot = self.counts_null
@@ -1418,7 +1441,7 @@ class ALP_sim():
                                
                 full_label_exp = "Expected" + appendix + " [" + string4 + "]" if label_exp else None
                 
-                self.ax.plot(self.bin_centers[counts_exp_plot != -np.inf],counts_exp_noinf,linewidth=2,alpha=0.52,color=color, linestyle=linestyle, label=full_label_exp )
+                self.ax.plot(self.bin_centers[counts_exp_plot != -np.inf],counts_exp_noinf,linewidth=2,alpha=(1-transparency),color=color, linestyle=linestyle, label=full_label_exp )
                 
                     
                 if errorbands:
@@ -1443,7 +1466,7 @@ class ALP_sim():
                     # print(lower_uncertainty_noinf)
                     # print(upper_uncertainty_noinf)
                     
-                    self.ax.fill_between(self.bin_centers[counts_exp_plot != -np.inf], counts_exp_noinf-lower_uncertainty_noinf, counts_exp_noinf + upper_uncertainty_noinf, color=color_band_light, alpha=0.5)
+                    self.ax.fill_between(self.bin_centers[counts_exp_plot != -np.inf], counts_exp_noinf-lower_uncertainty_noinf, counts_exp_noinf + upper_uncertainty_noinf, color=color_band_light, alpha=0.5*(1-transparency))
                           
                 
             if plot_obs:
@@ -1459,7 +1482,7 @@ class ALP_sim():
                 if errors:
                     self.ax.errorbar(self.bin_centers[counts_obs_plot != -np.inf], counts_obs_noinf, [lower_error_noinf, upper_error_noinf],fmt='.', c=color_obs, elinewidth=2, markersize=5, capsize=4, label=full_label_obs )
                 else:
-                    self.ax.plot(self.bin_centers[counts_obs_plot != -np.inf], counts_obs_noinf, c=color_obs,linestyle=linestyle_obs,label=full_label_obs )
+                    self.ax.plot(self.bin_centers[counts_obs_plot != -np.inf], counts_obs_noinf, c=color_obs,linestyle=linestyle_obs,label=full_label_obs,alpha=(1-transparency) )
      
         
 
