@@ -7,7 +7,7 @@ Created on Mon Jan 29 11:10:57 2024
 """
 
 
-import swyft
+
 import os
 import sys
 import numpy as np
@@ -85,6 +85,11 @@ if __name__ == "__main__":
         f.write("conda activate /fp/homes01/u01/ec-gertwk/.conda/envs/"+str(conda_env))
         f.write("\n\n")
         f.write("\n\n")
+    
+    # else:
+        # f.write("\n\n")
+        # f.write("conda activate "+str(conda_env))
+        # f.write("\n\n")
         
     f.write("python simulate_batch.py")
     

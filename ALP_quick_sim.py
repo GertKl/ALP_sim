@@ -108,6 +108,7 @@ class ALP_sim():
         self.noise = self.noise_poisson
         self._which_noise="poisson"
         self.params = [0, 0]
+        self.log_params = [0, 0]
         self.param_names = ['m','g']
         self.param_units=  ['nev','\\times  10^{{-11}} \, \mathrm{{ GeV}}^{{-1}}']
         self.null_params = [0, 0]
@@ -124,6 +125,7 @@ class ALP_sim():
         self._floor_obs = None
         self._loc = 0
         self._noise_sigma = 1
+        self._warned_about_parameter_lengths = False
         
 
         # Plot configuration parameters. See method configure_plot().
@@ -252,7 +254,7 @@ class ALP_sim():
         if pointing != "__empty__" and pointing != self.pointing: 
             self.pointing = pointing
             model_changed = True
-        if livetime != "__empty__" and livetime != self.livetime: 
+        if livetime != "__empty__" and livetime*u.hr != self.livetime: 
             self.livetime = livetime * u.hr
             model_changed = True
         if irf_file != "__empty__" and irf_file != self.irf_file: 
@@ -272,7 +274,9 @@ class ALP_sim():
                         model: str="__empty__",
                         noise: str="__empty__",
                         params: list[float]="__empty__",
+                        log_params: list[bool]="__empty__",
                         param_names: list[str]="__empty__",
+                        param_units: list[str]="__empty__",
                         null_params: list[float]="__empty__",
                         bkg: Union[bool,None]="__empty__",
                         signal: Union[bool,None]="__empty__",
@@ -301,6 +305,8 @@ class ALP_sim():
                                     self.compute_case). Can have any dimension up to the number of model 
                                     parameters, but must be adapted to parameter expansion function, 
                                     see method full_params_default().
+            -  log_params:          Whether the corresponding parameter value is to be understood 
+                                    as the log10 of the actual value.
             -  param_names:         Names of the parameters, list of strings. Mostly for plotting.
             -  null_params:         Parameter values of the null-hypothesis.
             -  bkg:                 Whether or not to include cosmic-ray background in simulation.
@@ -372,13 +378,22 @@ class ALP_sim():
         
             warnings.filterwarnings("ignore", category=FutureWarning)
         
-            if params != "__empty__" and not np.array_equiv(np.array(params),np.array(self.params)): 
+            if params != "__empty__" and not (np.array_equiv(np.array(params),np.array(self.params)) and len(params)==len(self.params)):
                 self.params = params
-            if param_names != "__empty__" and not (np.array_equiv(np.array(param_names),np.array(self.param_names))and len(null_params)==len(self.null_params)): 
+                if not len(params)==len(self.params): self._warned_about_parameter_lengths = 0
+            if param_names != "__empty__" and not (np.array_equiv(np.array(param_names),np.array(self.param_names))and len(param_names)==len(self.param_names)): 
                 self.param_names = param_names
-            if null_params != "__empty__" and not (np.array_equiv(np.array(null_params),np.array(self.null_params)) and len(null_params)==len(self.null_params)): 
+                if not len(param_names)==len(self.param_names): self._warned_about_parameter_lengths = 0
+            if param_units != "__empty__" and not (np.array_equiv(np.array(param_units),np.array(self.param_units))and len(param_names)==len(self.param_units)): 
+                self.param_units = param_units
+                if not len(param_names)==len(self.param_units): self._warned_about_parameter_lengths = 0
+            if log_params != "__empty__" and not (np.array_equiv(np.array(log_params),np.array(self.log_params))and len(log_params)==len(self.log_params)): 
+                self.log_params = log_params
+                if not len(log_params)==len(self.log_params): self._warned_about_parameter_lengths = 0
+            if null_params != "__empty__" and not (np.array_equiv(np.array(null_params),np.array(self.null_params)) and len(null_params)==len(self.null_params)):
                 self.null_params = null_params
                 model_changed = True
+                if not len(null_params)==len(self.null_params): self._warned_about_parameter_lengths = 0
             if bkg != "__empty__" and bkg != self.with_bkg_model: 
                 self.with_bkg_model = bkg
                 model_changed = True
@@ -406,13 +421,30 @@ class ALP_sim():
                 model_changed = True
             if ALP_seed != "__empty__" and ALP_seed != self.ALP_seed: #TODO: standardize ALP_seed when using None for null-hypothesis?
                 self.ALP_seed = ALP_seed
-                model_changed = True
+                # model_changed = True
             
         if model_changed and new_null:
             self._need_new_null = True
-       
+        
+        
+        lengths_equal = True
+        
+        if not self._warned_about_parameter_lengths:
+            if not len(self.params) != len(self.log_params) and log_params == "__empty__":
+                lengths_equal = False
+            elif not len(self.params) != len(self.null_params) and null_params == "__empty__":
+                lengths_equal = False
+            elif not len(self.params) != len(self.param_names) and param_names == "__empty__":
+                lengths_equal = False
+            elif not len(self.params) != len(self.param_units) and param_units == "__empty__":
+                lengths_equal = False
+            
+            if not lengths_equal:
+                warnings.warn("The number of model parameters, log-indicators, null-hypothesis parameters, parameter names and parameter units are not equal")
+                self._warned_about_parameter_lengths = 1
+        
 
-        #TODO: error band around expected counts? 
+
     
         
     def configure_plot(self,
@@ -726,8 +758,12 @@ class ALP_sim():
         
         logging.disable(logging.WARNING)
         
-        v = self.full_param_vec(params)
+        mask = np.array(self.log_params) == 1
+        new_params = np.array(params).copy()
+        new_params[mask] = 10.**np.array(params)[mask]
         
+        v = self.full_param_vec(new_params)
+
         
         v[17] = -v[17]
         
@@ -1232,14 +1268,18 @@ class ALP_sim():
             
             if self._which_model in ["log", "spectral_fit_log"]:
                 explicit_params = 10.**np.array(self.params)
-            else:
-                explicit_params = self.params.copy()
+            else:   
+                mask = np.array(self.log_params) == 1
+                explicit_params = np.array(self.params).copy()
+                explicit_params[mask] = 10.**np.array(self.params)[mask]
                 
             for i,p in enumerate(explicit_params):
-                if i != len(self.params)-1:
-                    string4 = string4 + "$"+self.param_names[i]+" = {:.1f} \, \mathrm{{".format(p)+self.param_units[i]+"}} $ , "
+                # stringp = ":.1e" if p<1 or p>1000 else ":.1f"
+                stringp = ":.2g"
+                if i != len(explicit_params)-1:
+                    string4 = string4 + "$"+self.param_names[i]+(" = {"+stringp+"} \, \mathrm{{").format(p)+self.param_units[i]+"}} $ , "
                 else:
-                    string4 = string4 + "$"+self.param_names[i]+" = {:.1f} \, \mathrm{{".format(p)+self.param_units[i]+"}}$"
+                    string4 = string4 + "$"+self.param_names[i]+(" = {"+stringp+"} \, \mathrm{{").format(p)+self.param_units[i]+"}}$"
             
         else:
             #if new_counts or (new_counts==None and self._need_new_null): self.generate_null()

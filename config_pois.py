@@ -80,11 +80,20 @@ if __name__ == "__main__":
                        "Max_turbulence", "min_turbulence", 
                        "turbulence_spec_index"]
     
+    available_units = ["","","", "", "", "", 
+                       "", "", "", 
+                       "", "", "", 
+                       "", "", "", 
+                       "", "", 
+                       ""]
+    
     param_names = []
+    param_units = []
     
     for j, val_j in enumerate(model_parameter_vals):
         if not val_j: 
             param_names.append(available_names[j])
+            param_units.append(available_units[j])
 
 
 
@@ -142,6 +151,8 @@ if __name__ == "__main__":
     f.write("\t return full_par")
     f.write("\n\n\n\n")
     f.write("param_names="+str(param_names))
+    f.write("\n\n\n\n")
+    f.write("param_units="+str(param_units))
     #f.truncate()
     
     f.close()
