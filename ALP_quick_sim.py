@@ -1273,13 +1273,15 @@ class ALP_sim():
                 explicit_params = np.array(self.params).copy()
                 explicit_params[mask] = 10.**np.array(self.params)[mask]
                 
-            for i,p in enumerate(explicit_params):
+            range_string4 = len(explicit_params) if isinstance(label_exp, bool) else min(int(label_exp),len(explicit_params))
+            for i in range(range_string4):
                 # stringp = ":.1e" if p<1 or p>1000 else ":.1f"
                 stringp = ":.2g"
-                if i != len(explicit_params)-1:
-                    string4 = string4 + "$"+self.param_names[i]+(" = {"+stringp+"} \, \mathrm{{").format(p)+self.param_units[i]+"}} $ , "
+                # print(label_exp)
+                if i != range_string4-1:
+                    string4 = string4 + "$"+self.param_names[i]+(" = {"+stringp+"} \, \mathrm{{").format(explicit_params[i])+self.param_units[i]+"}} $ , "
                 else:
-                    string4 = string4 + "$"+self.param_names[i]+(" = {"+stringp+"} \, \mathrm{{").format(p)+self.param_units[i]+"}}$"
+                    string4 = string4 + "$"+self.param_names[i]+(" = {"+stringp+"} \, \mathrm{{").format(explicit_params[i])+self.param_units[i]+"}}$"
             
         else:
             #if new_counts or (new_counts==None and self._need_new_null): self.generate_null()
