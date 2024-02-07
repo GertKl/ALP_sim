@@ -91,3 +91,9 @@ class ALP_SWYFT_Simulator(swyft.Simulator):
         params = graph.node('params', self.sample_prior)
         exp = graph.node('exp', self.generate_exp, params)
         data = graph.node('data', self.generate_data,exp,params)
+        
+        
+        
+        
+        
+        

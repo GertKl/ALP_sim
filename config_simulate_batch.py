@@ -12,9 +12,9 @@ import os
 import sys
 import numpy as np
 
-ALP_file_dir = os.path.dirname(os.getcwd())+"/analysis_scripts/ALP_sim"  
+# ALP_file_dir = os.path.dirname(os.getcwd())+"/analysis_scripts/ALP_sim"  
 
-if ALP_file_dir: sys.path.append(ALP_file_dir)   #!!! Change path to location of differential_counts.py and ALP_sim.py
+# if ALP_file_dir: sys.path.append(ALP_file_dir)   #!!! Change path to location of differential_counts.py and ALP_sim.py
 from ALP_quick_sim import ALP_sim
 from alp_swyft_simulator import ALP_SWYFT_Simulator
 
@@ -39,7 +39,7 @@ if __name__ == "__main__":
 
     # f = open(config.dirc + "/cluster_runs/results/" + config.name_run_ext + "/" + "train.sh", "w")
     
-    f = open("simulate_batch.sh", "w")
+    f = open(os.getcwd()+"/simulate_batch.sh", "w")
     
     f.write("#!/bin/bash")
     f.write("\n\n")
@@ -59,9 +59,9 @@ if __name__ == "__main__":
         if devel_sim:
             f.write("#SBATCH --qos=devel")
             f.write("\n")
-        if gpus:
-            f.write("#SBATCH --gpus="+str(gpus))
-            f.write("\n")
+        # if gpus:
+        #     f.write("#SBATCH --gpus="+str(gpus))
+        #     f.write("\n")
         f.write("#SBATCH --output="+os.getcwd()+"/sim_output.out")
         f.write("\n\n")
         

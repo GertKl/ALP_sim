@@ -100,7 +100,7 @@ if __name__ == "__main__":
 
     #Writing the function definition, and list of parameter names to file. 
 
-    f = open(os.getcwd() + "/param_function.py", "w")
+    f = open("param_function.py", "w")
     
     f.write("#!/usr/bin/env python3")
     f.write("\n")

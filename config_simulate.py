@@ -37,11 +37,10 @@ for key in config_objects.keys():
 
 if __name__ == "__main__":
     
-    print('yay')
     
     # f = open(config.dirc + "/cluster_runs/results/" + config.name_run_ext + "/" + "train.sh", "w")
     
-    f = open(files_dir+"/simulate.sh", "w")
+    f = open(os.getcwd()+"/simulate.sh", "w")
     
     f.write("#!/bin/bash")
     f.write("\n\n")
@@ -128,7 +127,6 @@ if __name__ == "__main__":
     
     f.close()
     
-    print('nay')
     
     
     
