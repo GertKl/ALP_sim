@@ -10,6 +10,7 @@ Created on Tue Nov 14 15:37:57 2023
 import numpy as np
 import random
 
+import matplotlib.axes
 import matplotlib.pyplot as plt
 plt.rc('xtick', labelsize=20)    # fontsize of the tick labels
 plt.rc('ytick', labelsize=20)
@@ -1194,7 +1195,9 @@ class ALP_sim():
                      label_exp: bool=True,
                      label_obs: bool=True,
                      label_survival: bool=True,
-                     transparency: float=0
+                     transparency: float=0,
+                     axes: matplotlib.axes.Axes=None,
+                     axes_survival: matplotlib.axes.Axes=None,
                      ) -> None:
         
         '''
@@ -1230,6 +1233,10 @@ class ALP_sim():
             -  label_exp:       Whether or not to label expected values.
             -  label_obs:       Whether or not to label observed values.
             -  label_survival:  Whether or not to label survival probabilities.
+            -  axes:            Existing axes on which to plot spectrum. If None (default), it will
+                                be plotted on self.ax.
+            -  axes_survival:   Existing axes on which to plot photon survival probability. If None 
+                                (default), it will be plotted on self.ax. 
 
 
         '''        
@@ -1388,35 +1395,44 @@ class ALP_sim():
 
 
         # Plotting
-        if (plot_obs or plot_exp): 
+        if (plot_obs or plot_exp):
             
-            if new_fig or not self.fig:
-                self.fig, self.ax = plt.subplots(figsize=self.figsize)
-                self.ax.grid(True,which='both',linewidth=0.8)
-                self.ax.set_ylabel(string1+string2+string3,size=self.fontsize)
-                self.ax.set_xlabel('E [GeV]',size=self.fontsize)
-                self.ax.set_title(label="$\gamma$-ray events from NGC1275", fontsize=self.fontsize)
+            new_labels = 1
+            if not axes:
+                if new_fig or not self.fig:
+                    self.fig, ax = plt.subplots(figsize=self.figsize)
+                else:
+                    ax = self.ax
+                    new_labels = 0
+            else:
+                ax = axes
+            
+            if new_labels:
+                ax.grid(True,which='both',linewidth=0.8)
+                ax.set_ylabel(string1+string2+string3,size=self.fontsize)
+                ax.set_xlabel('E [GeV]',size=self.fontsize)
+                ax.set_title(label="$\gamma$-ray events from NGC1275", fontsize=self.fontsize)
                 xmin_prev, xmax_prev, ymin_prev, ymax_prev = np.inf, -np.inf, np.inf, -np.inf
             else:
-                xmin_prev, xmax_prev = self.ax.get_xlim()
-                ymin_prev, ymax_prev = self.ax.get_ylim()
+                xmin_prev, xmax_prev = ax.get_xlim()
+                ymin_prev, ymax_prev = ax.get_ylim()
         
             # print("xmax: " + str(xmax))
             # print("xmin_nonzero: " + str(xmin_nonzero))
         
             if self._logx or (self._logx==None and (abs(xmax/xmin_nonzero) > 100 and not xmin < 0)): 
-                self.ax.set_xscale("log")
+                ax.set_xscale("log")
                 xmin = 0.5*xmin_nonzero
             else:
-                self.ax.set_xscale("linear")
+                ax.set_xscale("linear")
             
             if self._logy or (self._logy==None and (abs(ymax/ymin_nonzero) > 100 and not ymin < 0)): 
-                self.ax.set_yscale("log")
+                ax.set_yscale("log")
                 legend_position="upper right"
                 ymin = 0.5*ymin_nonzero
                 ymax = 5*ymax
             else:
-                self.ax.set_yscale("linear")
+                ax.set_yscale("linear")
                 legend_position="upper right"
             
             
@@ -1431,34 +1447,34 @@ class ALP_sim():
             
             
             # if not self.xmin: 
-            #     self.ax.set_xlim(xmin=xmin)
+            #     ax.set_xlim(xmin=xmin)
             # else:
-            #     self.ax.set_xlim(xmin=self.xmin)
+            #     ax.set_xlim(xmin=self.xmin)
             # if not self.xmax: 
-            #     self.ax.set_xlim(xmax=xmax)
+            #     ax.set_xlim(xmax=xmax)
             # else:
-            #     self.ax.set_xlim(xmax=self.xmax)
+            #     ax.set_xlim(xmax=self.xmax)
             # if not self.ymin: 
-            #     self.ax.set_ylim(ymin=ymin)
+            #     ax.set_ylim(ymin=ymin)
             # else:
-            #     self.ax.set_ylim(ymin=self.ymin)
+            #     ax.set_ylim(ymin=self.ymin)
             # if not self.ymax: 
-            #     self.ax.set_ylim(ymax=ymax)
+            #     ax.set_ylim(ymax=ymax)
             # else:
-            #     self.ax.set_ylim(ymax=self.ymax)
+            #     ax.set_ylim(ymax=self.ymax)
             
             
             if self.xmin: 
-                self.ax.set_xlim(xmin=self.xmin)
+                ax.set_xlim(xmin=self.xmin)
 
             if self.xmax: 
-                self.ax.set_xlim(xmax=self.xmax)
+                ax.set_xlim(xmax=self.xmax)
 
             if self.ymin: 
-                self.ax.set_ylim(ymin=self.ymin)
+                ax.set_ylim(ymin=self.ymin)
 
             if self.ymax: 
-                self.ax.set_ylim(ymax=self.ymax)
+                ax.set_ylim(ymax=self.ymax)
 
 
             
@@ -1483,12 +1499,12 @@ class ALP_sim():
                                
                 full_label_exp = "Expected" + appendix + " [" + string4 + "]" if label_exp else None
                 
-                self.ax.plot(self.bin_centers[counts_exp_plot != -np.inf],counts_exp_noinf,linewidth=2,alpha=(1-transparency),color=color, linestyle=linestyle, label=full_label_exp )
+                ax.plot(self.bin_centers[counts_exp_plot != -np.inf],counts_exp_noinf,linewidth=2,alpha=(1-transparency),color=color, linestyle=linestyle, label=full_label_exp )
                 
                     
                 if errorbands:
                     
-                    color_band = self.ax.lines[-1].get_color()
+                    color_band = ax.lines[-1].get_color()
                     color_band = mcolors.to_rgb(color_band)
                     color_band_lightness = 0.7
                     color_band_light = (color_band[0] + (1-color_band[0])*color_band_lightness,color_band[1]+ (1-color_band[1])*color_band_lightness, color_band[2]+(1-color_band[2])*color_band_lightness)
@@ -1508,7 +1524,7 @@ class ALP_sim():
                     # print(lower_uncertainty_noinf)
                     # print(upper_uncertainty_noinf)
                     
-                    self.ax.fill_between(self.bin_centers[counts_exp_plot != -np.inf], counts_exp_noinf-lower_uncertainty_noinf, counts_exp_noinf + upper_uncertainty_noinf, color=color_band_light, alpha=0.5*(1-transparency))
+                    ax.fill_between(self.bin_centers[counts_exp_plot != -np.inf], counts_exp_noinf-lower_uncertainty_noinf, counts_exp_noinf + upper_uncertainty_noinf, color=color_band_light, alpha=0.5*(1-transparency))
                           
                 
             if plot_obs:
@@ -1522,49 +1538,64 @@ class ALP_sim():
                 full_label_obs = "Simulated"+appendix+"for " + string4 if label_obs else None
                 
                 if errors:
-                    self.ax.errorbar(self.bin_centers[counts_obs_plot != -np.inf], counts_obs_noinf, [lower_error_noinf, upper_error_noinf],fmt='.', c=color_obs, elinewidth=2, markersize=5, capsize=4, label=full_label_obs )
+                    ax.errorbar(self.bin_centers[counts_obs_plot != -np.inf], counts_obs_noinf, [lower_error_noinf, upper_error_noinf],fmt='.', c=color_obs, elinewidth=2, markersize=5, capsize=4, label=full_label_obs )
                 else:
-                    self.ax.plot(self.bin_centers[counts_obs_plot != -np.inf], counts_obs_noinf, c=color_obs,linestyle=linestyle_obs,label=full_label_obs,alpha=(1-transparency) )
+                    ax.plot(self.bin_centers[counts_obs_plot != -np.inf], counts_obs_noinf, c=color_obs,linestyle=linestyle_obs,label=full_label_obs,alpha=(1-transparency) )
      
         
 
             if self._legend: 
-                self.ax.legend(loc=legend_position, fontsize=min(9*self.figsize[1]/5, 9*self.figsize[0]/9))
+                ax.legend(loc=legend_position, fontsize=min(9*self.figsize[1]/5, 9*self.figsize[0]/9))
             else:
-                if self.ax.legend_:
-                        self.ax.legend().remove() 
+                if ax.legend_:
+                        ax.legend().remove()
+            
+            if not axes:    
+                self.ax = ax
+
         
             
         if plot_survival:
             
-            if new_fig or not self.fig_survival:
-                self.fig_survival, self.ax_survival = plt.subplots(figsize=(self.figsize[0], self.figsize[1]*0.5))
-                self.ax_survival.grid(True,which='both',linewidth=0.3)
-                self.ax_survival.set_ylabel('Photon survival probability', size=15)
-                self.ax_survival.set_xlabel('E [GeV]',size=15)
-                self.ax_survival.set_ylim([0.,1.1])
-                self.ax_survival.set_xscale("log")
-                self.ax_survival.plot(self.enpoints_pgg, self.pgg_EBL, "-",color="k",
+            new_labels = 1
+            if not axes_survival:
+                if new_fig or not self.fig_survival:
+                    self.fig_survival, ax_survival = plt.subplots(figsize=(self.figsize[0], self.figsize[1]*0.5))
+                else:
+                    ax_survival = self.ax_survival
+                    new_labels = 0
+            else:
+                ax_survival = axes_survival
+            
+            if new_labels:
+                ax_survival.grid(True,which='both',linewidth=0.3)
+                ax_survival.set_ylabel('Photon survival probability', size=15)
+                ax_survival.set_xlabel('E [GeV]',size=15)
+                ax_survival.set_ylim([0.,1.1])
+                ax_survival.set_xscale("log")
+                ax_survival.plot(self.enpoints_pgg, self.pgg_EBL, "-",color="k",
                          label="intrinsic + EBL")
             
-            if xmin: self.ax_survival.set_xlim(xmin=xmin)
-            if xmax: self.ax_survival.set_xlim(xmax=xmax)
+            if xmin: ax_survival.set_xlim(xmin=xmin)
+            if xmax: ax_survival.set_xlim(xmax=xmax)
             
             full_label_survival = r"intrinsic + EBL + ALP ["+self.param_names[0]+" = {:.1f} neV,  "+self.param_names[1]+" = {:.1f} $ \times  10^{{-11 }} / \mathrm{{GeV}} $]".format(self.params[0],self.params[1]) if label_survival else None
             
-            self.ax_survival.plot(self.enpoints_pgg, self.pgg,color=color,linestyle=linestyle, 
+            ax_survival.plot(self.enpoints_pgg, self.pgg,color=color,linestyle=linestyle, 
                      label=full_label_survival)
             
             #plt.plot([5e1,5e1],[0,1.5], c='0.5', linestyle='--', label="Range in paper")
             #plt.plot([2.8e4,2.8e4],[0,1.5], c='0.5', linestyle='--' )
             
             if self._legend:
-                self.ax_survival.legend(loc=legend_position, fontsize=min(9*self.figsize[1]/5, 9*self.figsize[0]/9))
+                ax_survival.legend(loc=legend_position, fontsize=min(9*self.figsize[1]/5, 9*self.figsize[0]/9))
             else:
-                self.ax_survival.legend().set_visible(False)
+                ax_survival.legend().set_visible(False)
+                
+            if not axes_survival:
+                self.ax_survival = ax_survival
             
-            
-            
+
 
             
 
