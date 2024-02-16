@@ -60,35 +60,35 @@ if __name__ == "__main__":
     
     T = Timer()
     
-    files_name = os.getcwd().split('/')[-1]
-    parent_dir = (os.getcwd()+"/").split('/notebooks/', 1)[0]
-    start_dir = os.getcwd()
-    files_dir = os.getcwd() + "/" + files_name 
-    store_name = files_name.split("_files")[0] + "_store"
-    store_dir = os.getcwd() + "/" + files_name + "/" + store_name
-    sys.path.append(files_dir)
+    # files_name = os.getcwd().split('/')[-1]
+    # parent_dir = (os.getcwd()+"/").split('/notebooks/', 1)[0]
+    # start_dir = os.getcwd()
+    # files_dir = os.getcwd()
+    # store_name = files_name.split("_files")[0] + "_store"
+    # store_dir = os.getcwd() + "/" + files_name + "/" + store_name
+    # sys.path.append(files_dir)
     
     from ALP_quick_sim import ALP_sim
     from network import Network
     
     
-    with open(files_dir+"/"+'config_objects.pickle', 'rb') as file:
+    with open('config_objects.pickle', 'rb') as file:
         config_objects = pickle.load(file)
     for key in config_objects.keys():
         locals()[key] = config_objects[key]
     
-    with open(files_dir+"/"+'obs_objects.pickle', 'rb') as file:
+    with open('obs_objects.pickle', 'rb') as file:
         obs_objects = pickle.load(file) 
     for key in obs_objects.keys():
         locals()[key] = obs_objects[key]
     
-    with open(files_dir+"/"+'sim_objects.pickle', 'rb') as file:
+    with open('sim_objects.pickle', 'rb') as file:
         sim_objects = pickle.load(file)
     for key in sim_objects.keys():
         locals()[key] = sim_objects[key]
         
         
-    store = swyft.ZarrStore(store_dir + "/" + store_name)
+    store = swyft.ZarrStore(slurm_dir_on_cluster + "/" + files_name + "/" + store_name + "/" + store_name)
     samples = store.get_sample_store()
     
     print(len("Store length: " + str(len(samples))))
@@ -97,8 +97,8 @@ if __name__ == "__main__":
     
     print(len("nans in store: " + str(np.where(np.isinf(samples['data'])))))
     
-    
-    network = Network()
+
+    network = Network(nbins=A.nbins, marginals=marginal, param_names=param_names)
     
     wandb_logger = WandbLogger(log_model='all')
     
@@ -118,6 +118,8 @@ if __name__ == "__main__":
     
     
     torch.save(network.state_dict(),"trained_network.pt")
+    
+    torch.save(network.state_dict(),'trained_network_'+files_name.split('_files')[0]+'_slurm.pt')
     
     
     prior_samples = sim.sample(100_000, targets=['params'])

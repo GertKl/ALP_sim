@@ -82,6 +82,11 @@ class ALP_SWYFT_Simulator(swyft.Simulator):
         data = self.A.noise({'y':exp},params)['y']
         return data.astype(np.float32)
 
+
+    # def generate_power(self,data):
+    #     power = abs(np.fft.fft(counts,n=len_fft))[...,:len_fts]
+    #     return power.astype(np.float32)
+
     # def simulate_store_parallel(self, n_sims_per_cpu):
     #     return store.simulate(self, max_sims=n_sims_per_cpu, batch_size=chunk_size)
 
@@ -91,6 +96,7 @@ class ALP_SWYFT_Simulator(swyft.Simulator):
         params = graph.node('params', self.sample_prior)
         exp = graph.node('exp', self.generate_exp, params)
         data = graph.node('data', self.generate_data,exp,params)
+        # power = graph.node('power', self.generate_power,data)
         
         
         
