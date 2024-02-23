@@ -59,7 +59,7 @@ if __name__ == "__main__":
     if gpus:
         f.write("#SBATCH --gpus="+str(gpus))
         f.write("\n")
-    f.write("#SBATCH --output="+files_dir)
+    f.write("#SBATCH --output="+os.getcwd()+"/train_output.out")
     f.write("\n\n")
     f.write("\n\n")
     f.write("set -o errexit  # Exit the script on any error")

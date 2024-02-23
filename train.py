@@ -29,6 +29,8 @@ import time
 
 
 
+
+
 class Timer():
     
     def __init__(self):
@@ -88,17 +90,17 @@ if __name__ == "__main__":
         locals()[key] = sim_objects[key]
         
         
-    store = swyft.ZarrStore(slurm_dir_on_cluster + "/" + files_name + "/" + store_name + "/" + store_name)
+    store = swyft.ZarrStore(slurm_dir_on_cluster + "/" + files_name + "/" + store_name + "/store")
     samples = store.get_sample_store()
     
-    print(len("Store length: " + str(len(samples))))
+    print("Store length: " + str(len(samples)))
           
-    print(len("Infs in store: " + str(np.where(np.isinf(samples['data'])))))
+    print("Infs in store: " + str(np.where(np.isinf(samples['data']))))
     
-    print(len("nans in store: " + str(np.where(np.isinf(samples['data'])))))
+    print("nans in store: " + str(np.where(np.isinf(samples['data']))))
     
 
-    network = Network(nbins=A.nbins, marginals=marginal, param_names=param_names)
+    network = Network(nbins=A.nbins, marginals=marginals, param_names=A.param_names)
     
     wandb_logger = WandbLogger(log_model='all')
     

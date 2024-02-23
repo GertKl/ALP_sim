@@ -44,7 +44,7 @@ if __name__ == "__main__":
     
     
     
-    store = swyft.ZarrStore(os.getcwd() + "/" + store_name+ "/" + store_name)
+    store = swyft.ZarrStore(os.getcwd() + "/" + store_name+ "/store")
     
     
     store.simulate(sim, batch_size=simulation_batch_size)
