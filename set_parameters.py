@@ -11,7 +11,6 @@ import argparse
 import os
 import shutil
 
-      
 
 excluded_analysis_files = ["notebooks", "__pycache__", ".gitignore", ".git"]
     
@@ -20,6 +19,7 @@ if __name__ == "__main__":
     
     parser = argparse.ArgumentParser(description="")
     
+    parser.add_argument("-startdir", type=str)
     
     parser.add_argument("-env1", type=str)
     parser.add_argument("-env2", type=str)
@@ -84,6 +84,25 @@ if __name__ == "__main__":
         raise NotImplementedError("Not implemented double-runs yet")
     
     
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
     # Copying analysis_scripts to results folder
     
     analysis_scripts_loc = args.env3
@@ -115,7 +134,38 @@ if __name__ == "__main__":
     
     
     
+    config_objects = {
+        'A':A, 
+        'n_sim':n_sim,
+        'n_cpus':n_cpus, 
+        'bounds':bounds, 
+        'truths':truths, 
+        'simulation_batch_size':simulation_batch_size, 
+        'store_name':store_name,'
+        store_dir':store_dir, 
+        'files_name':files_name, 
+        'files_dir':files_dir, 
+        'start_dir':start_dir, 
+        'conda_env':conda_env,
+        'slurm':slurm,
+        'slurm_train':slurm_train, 
+        'slurm_dir':slurm_dir,
+        'slurm_dir_on_cluster':slurm_dir_on_cluster, 
+        'gpus':gpus,'max_time_sim':max_time_sim,
+        'max_memory_sim':max_memory_sim,
+        'partition_sim':partition_sim,
+        'devel_sim':devel_sim,
+        'max_time_train':max_time_train,
+        'max_memory_train':max_memory_train,
+        'partition_train':partition_train,
+        'devel_train':devel_train,
+        'account':account, 
+        'colors':colors, 
+        'marginals':marginals
+        }
     
+    with open(results_dir+'/config_objects.pickle','wb') as file:
+        pickle.dump(config_objects, file)
     
     
 
