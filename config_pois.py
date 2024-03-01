@@ -14,93 +14,69 @@ including the ones with pre-defined values.
 """
 
 
-import os
-import sys
+
 import numpy as np
 
-# ALP_file_dir = os.path.dirname(os.getcwd())+"/analysis_scripts/ALP_sim"  
-
-# if ALP_file_dir: sys.path.append(ALP_file_dir)   #!!! Change path to location of differential_counts.py and ALP_sim.py
 from ALP_quick_sim import ALP_sim
-from alp_swyft_simulator import ALP_SWYFT_Simulator
-
-import scipy.stats as scist
-
-import copy
-
-
 import pickle
+import argparse
 
 
+
+available_names = ["m","g","PWL_Amplitude", "PWL_spec_index", "E0", "Ecut", 
+                   "rms_B", "e_density_norm", "e_density_norm_2", 
+                   "cluster_extension", "e_density_1", "e_density_2", 
+                   "e_density_3", "e_density_4", "B_scaling", 
+                   "Max_turbulence", "min_turbulence", 
+                   "turbulence_spec_index"]
+
+available_units = ["","","", "", "", "", 
+                   "", "", "", 
+                   "", "", "", 
+                   "", "", "", 
+                   "", "", 
+                   ""]
 
 
 if __name__ == "__main__":
 
+    parser = argparse.ArgumentParser(description="")
+    parser.add_argument("-results_dir", type=str)
+    args = parser.parse_args()
     
-
-    with open('poi_objects.pickle', 'rb') as file:
-        poi_objects = pickle.load(file)
-            
-    for key in poi_objects.keys():
-        locals()[key] = poi_objects[key]
+    with open(args.results_dir+'/config_variables.pickle', 'rb') as file:
+        config_dict = pickle.load(file)
+    for key in config_dict.keys():
+        locals()[key] = config_dict[key]
 
 
-
-    print()
-    print("Writing POI configuration function")
-
-
-    
-    #Defining strings that represent how each parameter will appear in 
-    #the function definition. 
+    # Defining strings that represent how each parameter will appear in 
+    # the function definition. 
  
-    params = list(np.zeros(len(model_parameter_vals)))
+    params = list(np.zeros(len(sim_params)))
     n_nones = 0
-    
-    
-    
-    
-    for i, val_i in enumerate(model_parameter_vals):
-        if val_i: 
+    for i, val_i in enumerate(sim_params):
+        if not isinstance(val_i,list): 
             params[i] = str(val_i)
         else: 
             params[i] = "params["+str(n_nones)+"]"
             n_nones += 1
        
-
-       
-            
     #Making a list of parameter names consisting only of the parameters of 
     #interest.    
         
-    available_names = ["m","g","PWL_Amplitude", "PWL_spec_index", "E0", "Ecut", 
-                       "rms_B", "e_density_norm", "e_density_norm_2", 
-                       "cluster_extension", "e_density_1", "e_density_2", 
-                       "e_density_3", "e_density_4", "B_scaling", 
-                       "Max_turbulence", "min_turbulence", 
-                       "turbulence_spec_index"]
-    
-    available_units = ["","","", "", "", "", 
-                       "", "", "", 
-                       "", "", "", 
-                       "", "", "", 
-                       "", "", 
-                       ""]
-    
     param_names = []
     param_units = []
-    
-    for j, val_j in enumerate(model_parameter_vals):
-        if not val_j: 
+    for j, val_j in enumerate(sim_params):
+        if isinstance(val_j,list): 
             param_names.append(available_names[j])
             param_units.append(available_units[j])
 
 
-
-
     #Writing the function definition, and list of parameter names to file. 
-
-    f = open("param_function.py", "w")
+    
+    
+    f = open(args.results_dir+"/param_function.py", "w")
     
     f.write("#!/usr/bin/env python3")
     f.write("\n")
@@ -153,12 +129,8 @@ if __name__ == "__main__":
     f.write("param_names="+str(param_names))
     f.write("\n\n\n\n")
     f.write("param_units="+str(param_units))
-    #f.truncate()
     
     f.close()
 
-
-    
-    print("Finished writing parameter-extension function")
     
 

@@ -8,167 +8,170 @@ Created on Thu Feb 22 15:18:47 2024
 
 
 import argparse
-import os
-import shutil
+import re
+import numpy as np
+import pickle
 
-
-excluded_analysis_files = ["notebooks", "__pycache__", ".gitignore", ".git"]
+print("Importing ALP_sim... ", end="", flush=True)
+from ALP_quick_sim import ALP_sim
+print("done.")
     
-
 if __name__ == "__main__":
+   
+    # Parsing results directory path and arguments-string.  
     
+    print("Parsing arguments-string to set_parameters.py... ", end="", flush=True)
     parser = argparse.ArgumentParser(description="")
-    
-    parser.add_argument("-startdir", type=str)
-    
-    parser.add_argument("-env1", type=str)
-    parser.add_argument("-env2", type=str)
-    parser.add_argument("-env3", type=str)
-    parser.add_argument("-env4", type=str)
-    
-    parser.add_argument("-tech1", type=str)
-    parser.add_argument("-tech2", type=str)
-    parser.add_argument("-tech3", type=str)
-    parser.add_argument("-tech4", type=str)
-    
-    parser.add_argument("-mod1", type=str)
-    parser.add_argument("-mod2", type=str)
-    parser.add_argument("-mod3", type=str)
-    
-    parser.add_argument("-params1", type=str)
-    parser.add_argument("-params2", type=str)
-    
-    parser.add_argument("-sim1", type=str)
-    parser.add_argument("-sim2", type=str)
-    parser.add_argument("-sim3", type=str)
-    parser.add_argument("-sim4", type=str)
-    parser.add_argument("-sim5", type=str)
-    parser.add_argument("-sim6", type=str)
-    parser.add_argument("-sim7", type=str)
-    parser.add_argument("-sim8", type=str)
-    
-    parser.add_argument("-train1", type=str)
-    parser.add_argument("-train2", type=str)
-    parser.add_argument("-train3", type=str)
-    parser.add_argument("-train4", type=str)
-    parser.add_argument("-train5", type=str)
-    parser.add_argument("-train6", type=str)
-    parser.add_argument("-train7", type=str)
-    parser.add_argument("-train8", type=str)
-    parser.add_argument("-train9", type=str)
-    parser.add_argument("-train10", type=str)
-    parser.add_argument("-train11", type=str)
-    parser.add_argument("-train12", type=str)
-    parser.add_argument("-train13", type=str)
-    
-    parser.add_argument("-inf1", type=str)
-    parser.add_argument("-inf2", type=str)
-    parser.add_argument("-inf3", type=str)
-    parser.add_argument("-inf4", type=str)
-    parser.add_argument("-inf5", type=str)
-    parser.add_argument("-inf6", type=str)
-    parser.add_argument("-inf7", type=str)
-    parser.add_argument("-inf8", type=str)
-    parser.add_argument("-inf9", type=str)
-    
+    parser.add_argument("-args", type=str)
     args = parser.parse_args()
+    print("done.")
     
     
-    
-    # Defining results directory path, and creating it if it doesn't already exist:
+    # Making basic dict of configuration arguments from raw arguments string. 
+
+    print("Converting arguments-string to variables... ", end="", flush=True)
+    config_dict = {}
+    config_list = args.args.split(";")
+
+    for item in config_list:
         
-    results_dir = args.startdir + "/results/" + args.tech1
-    if not os.path.exists(results_dir): 
-        os.makedirs(results_dir)
-    else:
-        raise NotImplementedError("Not implemented double-runs yet")
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    # Copying analysis_scripts to results folder
-    
-    analysis_scripts_loc = args.env3
-    for item in os.listdir(analysis_scripts_loc ):
-        if item not in excluded_analysis_files:
-            shutil.copy(os.path.join(analysis_scripts_loc,item), 
-                        os.path.join(results_dir,item))
+        # Converting argument strings into lists.
+        
+        config_argument_name_and_value = re.sub(r'\s','',item).split("=")
+     
+        is_item_1d=True
+        is_row_1d=True
+        
+        if len(config_argument_name_and_value)>1:
             
-    
-    
-    
-    # Format marginals-specifying vector
+            if len(config_argument_name_and_value)>3:
+                raise ValueError('Argument name and value defined incorrectly \
+                                 in configuration script: ' + item)
+            
+            config_dict_item = config_argument_name_and_value[1].split(",")
+            if len(config_dict_item)>1: is_item_1d=False
+            
+            for row, item_row in enumerate(config_dict_item):
+                
+                config_dict_item_row = item_row.split("|")
+                if len(config_dict_item_row)>1: is_row_1d=False
+                config_dict_item[row] = config_dict_item_row[0] if is_row_1d else config_dict_item_row
+                
+            config_dict_item = config_dict_item[0] if is_item_1d else config_dict_item
+                
+            # Converting elements of argument into specified type, if given. 
+            if len(config_argument_name_and_value)==3:
+                config_dict_item = np.array(config_dict_item).astype(config_argument_name_and_value[2])
+                if is_item_1d==0 or is_row_1d==0:
+                    config_dict_item = list(config_dict_item)
+                else:
+                    config_dict_item = getattr(__builtins__, config_argument_name_and_value[2])(config_dict_item)
+            
 
-    marg_temp = eval(args.mod2.replace(":",","))
-    try:
-        marg = list(marg_temp)
-    except TypeError as Err:
-        if isinstance(marg_temp, int):
-            marg = [marg_temp]
-        else:
-            raise Err
+            config_dict[config_argument_name_and_value[0]] = config_dict_item
+            
+            # print( {config_argument_name_and_value[0]:config_dict[config_argument_name_and_value[0]]} )
+            # print()
+    print("done.")
+    
+    
+    
+    # Formatting selected arguments
+    
+    
+    # Formatting model parameter information. 
+    
+    model_params = np.array(config_dict['model_params'])
+    
+    sim_params = list(model_params[:,0])
+    bounds = []
+    for isp, sim_param in enumerate(sim_params):
+        sim_params[isp] = eval(sim_param.replace(':',','))
+        if isinstance(sim_params[isp], list):
+            bounds.append(sim_params[isp])
+        elif not isinstance(sim_params[isp], (int, float)):
+            raise TypeError("A parameter argument (" + str(sim_params[isp]) + ") was evaluated to an unexpected \
+                            type ("+str(type(sim_params[isp]))+")")
+        
+    obs_params = list(model_params[:,1].astype(float))
+    null_params = list(model_params[:,2].astype(float))
+    is_log = list(model_params[:,3].astype(int))
+    all_param_names = list(model_params[:,4].astype(str))
+    all_param_units = list(model_params[:,5].astype(str))
+    
+    param_names = []
+    param_units = []
+    for j, val_j in enumerate(sim_params):
+        if isinstance(val_j,list): 
+            param_names.append(all_param_names[j])
+            param_units.append(all_param_units[j])
+    
+    
+    config_dict['sim_params'] = sim_params
+    config_dict['obs_params'] = obs_params
+    config_dict['param_names'] = param_names
+    config_dict['param_units'] = param_units
+    config_dict['bounds'] = bounds
+
     
 
+    # Creating and formatting ALP_sim object. 
+    
+    
+    print("Initializing new ALP_sim object... ", end='', flush=True)
+    A = ALP_sim(set_null=0, set_obs=0)
+    print("done.")
+    print()
 
-    # Deconstructing model parameters-information
+    A.configure_model(
+        model=config_dict['model'],
+        noise="poisson",
+        log_params=is_log,
+        null_params=null_params,
+        param_names=param_names,
+        param_units=param_units,
+        ALP_seed=eval(config_dict['ALP_seed']),
+        floor=float(config_dict['floor_exp']),
+        floor_obs=float(config_dict['floor_obs']), # not reflected in training set of all_larger_bounds
+        logcounts=True,
+        residuals=True
+    )
     
-    param_info_vec = args.params2.replace(" ","").split("::")
+    print("Configuring observations geometry... ", end='', flush=True)
+    A.configure_obs(
+        nbins = int(config_dict['nbins']),
+        nbins_etrue = int(config_dict['nbins_etrue']),
+        emin = float(config_dict['emin']),
+        emax = float(config_dict['emax']),
+        livetime = float(config_dict['livetime']),
+        irf_file = config_dict['IRF_file'],
+    )
+    print("done.")
     
+    A.generate_null()
+    print()
     
-    
-    
-    config_objects = {
-        'A':A, 
-        'n_sim':n_sim,
-        'n_cpus':n_cpus, 
-        'bounds':bounds, 
-        'truths':truths, 
-        'simulation_batch_size':simulation_batch_size, 
-        'store_name':store_name,'
-        store_dir':store_dir, 
-        'files_name':files_name, 
-        'files_dir':files_dir, 
-        'start_dir':start_dir, 
-        'conda_env':conda_env,
-        'slurm':slurm,
-        'slurm_train':slurm_train, 
-        'slurm_dir':slurm_dir,
-        'slurm_dir_on_cluster':slurm_dir_on_cluster, 
-        'gpus':gpus,'max_time_sim':max_time_sim,
-        'max_memory_sim':max_memory_sim,
-        'partition_sim':partition_sim,
-        'devel_sim':devel_sim,
-        'max_time_train':max_time_train,
-        'max_memory_train':max_memory_train,
-        'partition_train':partition_train,
-        'devel_train':devel_train,
-        'account':account, 
-        'colors':colors, 
-        'marginals':marginals
-        }
-    
-    with open(results_dir+'/config_objects.pickle','wb') as file:
-        pickle.dump(config_objects, file)
+    config_dict['A'] = A
+ 
     
     
-
+    
+    # Printing and saving variables to files
+    
+    results_dir = config_dict['results_dir']
+    
+    file_control_name = "check_variables.txt"
+    file_control = open(results_dir + "/" + file_control_name, "w")
+    for key in config_dict.keys():    
+        file_control.write(str(key) +" : " + str(config_dict[key])+"\n")
+    file_control.close()
+    print("Printed configuration variables to check_variables.txt")
+    
+    with open(results_dir+'/config_variables.pickle','wb') as file:
+        pickle.dump(config_dict, file)
+    print("Saved all configuration variables to "+file_control_name)
+    print()
+    
 
     
 
