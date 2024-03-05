@@ -9,45 +9,42 @@ Created on Fri Jan 26 17:13:01 2024
 
 import swyft
 import os
-import sys
-import numpy as np
-
-# ALP_file_dir = os.path.dirname(os.getcwd())+"/analysis_scripts/ALP_sim"  
-
-# if ALP_file_dir: sys.path.append(ALP_file_dir)   #!!! Change path to location of differential_counts.py and ALP_sim.py
 from ALP_quick_sim import ALP_sim
 from alp_swyft_simulator import ALP_SWYFT_Simulator
-
-import scipy.stats as scist
-
-import copy
-
-
 import pickle
+import argparse
+
+import time
 
 
 if __name__ == "__main__":
     
-    with open('config_objects.pickle', 'rb') as file:
-        config_objects = pickle.load(file)
-        
-    for key in config_objects.keys():
-        locals()[key] = config_objects[key]
+    
+    parser = argparse.ArgumentParser(description="")
+    parser.add_argument("-path", type=str)
+    args = parser.parse_args()
+    
+    with open(args.path +'/config_variables.pickle', 'rb') as file:
+        config_dict = pickle.load(file)
+    for key in config_dict.keys():
+        locals()[key] = config_dict[key]
     
     
-    with open('sim_objects.pickle', 'rb') as file:
-        sim_objects = pickle.load(file)
-        
-    for key in sim_objects.keys():
-        locals()[key] = sim_objects[key]
+    sim = ALP_SWYFT_Simulator(A, bounds)
+    
+    # time.sleep(60)
+    
+    store = swyft.ZarrStore(args.path + "/sim_output/store/" + store_name)
+    if len(store) == 0:
+        store.init(
+        N = n_sim,
+        chunk_size=int(n_sim/n_jobs_sim),
+        shapes=sim.get_shapes_and_dtypes()[0],
+        dtypes=sim.get_shapes_and_dtypes()[1],
+        )
     
     
-    
-    
-    store = swyft.ZarrStore(os.getcwd() + "/" + store_name+ "/store")
-    
-    
-    store.simulate(sim, batch_size=simulation_batch_size)
+    store.simulate(sim, batch_size=int(n_sim/n_jobs_sim))
 
 
 

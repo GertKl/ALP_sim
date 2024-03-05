@@ -9,43 +9,30 @@ Created on Mon Jan 29 11:10:57 2024
 
 
 import os
-import sys
-import numpy as np
-
-# ALP_file_dir = os.path.dirname(os.getcwd())+"/analysis_scripts/ALP_sim"  
-
-# if ALP_file_dir: sys.path.append(ALP_file_dir)   #!!! Change path to location of differential_counts.py and ALP_sim.py
-from ALP_quick_sim import ALP_sim
-from alp_swyft_simulator import ALP_SWYFT_Simulator
-
-import scipy.stats as scist
-
-import copy
-
+import argparse
 import pickle
-
-import os
-
-import pickle
-
-with open('config_objects.pickle', 'rb') as file:
-    config_objects = pickle.load(file)
-    
-for key in config_objects.keys():
-    locals()[key] = config_objects[key]
 
 
 if __name__ == "__main__":
-
-    # f = open(config.dirc + "/cluster_runs/results/" + config.name_run_ext + "/" + "train.sh", "w")
     
-    f = open(os.getcwd()+"/simulate_batch.sh", "w")
+    
+    parser = argparse.ArgumentParser(description="")
+    parser.add_argument("-path", type=str)
+    args = parser.parse_args()
+    
+    with open(args.path +'/config_variables.pickle', 'rb') as file:
+        config_dict = pickle.load(file)
+    for key in config_dict.keys():
+        locals()[key] = config_dict[key]
+    
+    
+    f = open(args.path+"/simulate_batch.sh", "w")
     
     f.write("#!/bin/bash")
     f.write("\n\n")
     f.write("\n\n")
     
-    if slurm:
+    if on_cluster:
         f.write("#SBATCH --job-name=ALP_simulations")
         f.write("\n")
         f.write("#SBATCH --account="+account)
@@ -58,13 +45,7 @@ if __name__ == "__main__":
         f.write("\n")
         if devel_sim:
             f.write("#SBATCH --qos=devel")
-            f.write("\n")
-        # if gpus:
-        #     f.write("#SBATCH --gpus="+str(gpus))
-        #     f.write("\n")
-        f.write("#SBATCH --output="+os.getcwd()+"/sim_output.out")
-        f.write("\n\n")
-        
+            f.write("\n")      
         f.write("\n\n")
         f.write("set -o errexit  # Exit the script on any error")
         f.write("\n\n")
@@ -91,7 +72,7 @@ if __name__ == "__main__":
         # f.write("conda activate "+str(conda_env))
         # f.write("\n\n")
         
-    f.write("python simulate_batch.py")
+    f.write("python "+args.path+"/simulate_batch.py -path "+args.path)
     
     f.write("\n\n")
     f.write("\n\n")

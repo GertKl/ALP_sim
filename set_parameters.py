@@ -9,8 +9,10 @@ Created on Thu Feb 22 15:18:47 2024
 
 import argparse
 import re
+import os
 import numpy as np
 import pickle
+import subprocess
 
 print("Importing ALP_sim... ", end="", flush=True)
 from ALP_quick_sim import ALP_sim
@@ -61,7 +63,13 @@ if __name__ == "__main__":
                 
             # Converting elements of argument into specified type, if given. 
             if len(config_argument_name_and_value)==3:
-                config_dict_item = np.array(config_dict_item).astype(config_argument_name_and_value[2])
+                try:
+                    config_dict_item = np.array(config_dict_item).astype(config_argument_name_and_value[2])
+                except Exception as Err:
+                    print("Encountered problems when setting type of raw argument: " + item)
+                    print()
+                    raise Err
+                    
                 if is_item_1d==0 or is_row_1d==0:
                     config_dict_item = list(config_dict_item)
                 else:
@@ -78,6 +86,7 @@ if __name__ == "__main__":
     
     # Formatting selected arguments
     
+    results_dir = config_dict['results_dir']
     
     # Formatting model parameter information. 
     
@@ -93,26 +102,49 @@ if __name__ == "__main__":
             raise TypeError("A parameter argument (" + str(sim_params[isp]) + ") was evaluated to an unexpected \
                             type ("+str(type(sim_params[isp]))+")")
         
-    obs_params = list(model_params[:,1].astype(float))
-    null_params = list(model_params[:,2].astype(float))
+    obs_params_full = list(model_params[:,1].astype(float))
+    null_params_full = list(model_params[:,2].astype(float))
     is_log = list(model_params[:,3].astype(int))
     all_param_names = list(model_params[:,4].astype(str))
     all_param_units = list(model_params[:,5].astype(str))
     
+    obs_params = []
+    null_params = []
     param_names = []
     param_units = []
+    log_params = []
     for j, val_j in enumerate(sim_params):
-        if isinstance(val_j,list): 
+        if isinstance(val_j,list):
+            obs_params.append(obs_params_full[j])
+            null_params.append(null_params_full[j]) 
             param_names.append(all_param_names[j])
             param_units.append(all_param_units[j])
+            log_params.append(is_log[j])
     
     
     config_dict['sim_params'] = sim_params
     config_dict['obs_params'] = obs_params
     config_dict['param_names'] = param_names
     config_dict['param_units'] = param_units
+    config_dict['log_params'] = log_params
     config_dict['bounds'] = bounds
 
+
+    # Saving variables so far, in order to be able to write parametr-extension function.
+    file_variables_name = "config_variables.pickle"
+    with open(results_dir+'/config_variables.pickle','wb') as file:
+        pickle.dump(config_dict, file)
+    print("Saved all configuration variables to "+file_variables_name)
+    print()
+
+    # Creating file defining parameter-extension function
+    print("Writing param_function.py... ", end='', flush=True)
+    config_pois_result = subprocess.run(['python', results_dir+'/config_pois.py','-path',results_dir], capture_output = True, text=True)
+    print("done.")
+    
+    # print(config_pois_result)
+    
+    from param_function import param_function
     
 
     # Creating and formatting ALP_sim object. 
@@ -123,10 +155,12 @@ if __name__ == "__main__":
     print("done.")
     print()
 
+    A.full_param_vec = param_function
+    
     A.configure_model(
         model=config_dict['model'],
         noise="poisson",
-        log_params=is_log,
+        log_params=log_params,
         null_params=null_params,
         param_names=param_names,
         param_units=param_units,
@@ -153,23 +187,37 @@ if __name__ == "__main__":
     
     config_dict['A'] = A
  
+    # Making sure POI_indices (marginals) is a list. 
+    POI_indices=config_dict['POI_indices']
+    if isinstance(POI_indices,int): POI_indices = [POI_indices]
+    config_dict['POI_indices'] = POI_indices
+    
+    # Extracting store name
+    
+    use_old_sims=config_dict['use_old_sims']
+    if os.path.exists(use_old_sims):
+        store_name = use_old_sims.split("/")[-1]
+    else:
+        store_name = 'store'
+        
+    config_dict['store_name'] = store_name
     
     
     
     # Printing and saving variables to files
     
-    results_dir = config_dict['results_dir']
+    
     
     file_control_name = "check_variables.txt"
     file_control = open(results_dir + "/" + file_control_name, "w")
     for key in config_dict.keys():    
         file_control.write(str(key) +" : " + str(config_dict[key])+"\n")
     file_control.close()
-    print("Printed configuration variables to check_variables.txt")
+    print("Printed configuration variables to "+file_control_name)
     
     with open(results_dir+'/config_variables.pickle','wb') as file:
         pickle.dump(config_dict, file)
-    print("Saved all configuration variables to "+file_control_name)
+    print("Saved all configuration variables to "+file_variables_name)
     print()
     
 

@@ -32,6 +32,8 @@ training_files=(\
 
 
 
+
+
 #---------------------------------------------------------------------
 #------------Declaring all variables from config-file ----------------
 #---------------------------------------------------------------------
@@ -71,7 +73,7 @@ echo
 #---------------------------------------------------------------------
 
 echo -n "Activating conda environment ${swyft_env}... "
-if [ $cluster == 1 ]
+if [ $on_cluster == 1 ]
 then
 
 	#set -o errexit  # Exit the script on any error
@@ -115,27 +117,24 @@ else
 fi
 
 # Checking if results folder exists in results parent-folder.
-make_new_results_dir=1
 if [ -d $results_dir ]
 then
 	echo Found directory with same run name: ${results_dir}
 	echo Sending output files there.
-	make_new_results_dir=0
-fi
-
-
-# If results parent-folder doesn't exist, creates it.
-if [ $make_new_results_dir == 1 ]
-then
+	i=1		# Index of run is 1 or higher (to be determined below) 
+else
 	echo -n "Making new results-directory with sub-directories... "
 	mkdir ${results_dir}
-	mkdir ${results_dir}/sim_output
-	mkdir ${results_dir}/train_output
-	mkdir ${results_dir}/val_output
-	mkdir ${results_dir}/archive
-	echo  done.
-	echo
+	echo done.
+	i=0		# Index of run. 
 fi
+echo
+
+if [ ! -e ${results_dir}/sim_output ] ; then mkdir ${results_dir}/sim_output ; fi
+if [ ! -e ${results_dir}/train_output ] ; then mkdir ${results_dir}/train_output ; fi
+if [ ! -e ${results_dir}/val_output  ] ; then	mkdir ${results_dir}/val_output ; fi
+if [ ! -e ${results_dir}/archive ] ; then mkdir ${results_dir}/archive ; fi
+
 
 
 #---------------------------------------------------------------------
@@ -145,38 +144,41 @@ fi
 
 # Determining which run-number (i) is currently being executed, based
 # on existence of files and folders ending in "__i".  
-i=0
-if find . -maxdepth 1 -type f -name '*__0.*' | grep -q 0 || [ -d ${results_dir}/archive/trial__0 ]; then i=1 ; fi
-while find . -maxdepth 1 -type f -name '*__${i}.*' | grep -q 0 || [ -d ${results_dir}/archive/trial__$(($i - 1)) ]
-do
-	i=$(($i+1))
-done
-echo "Run number for this run name is ${i}."
+echo -n "Checking for earlier runs with this name... "
+#if [ ! -d ${results_dir}/archive/trial__0 ] ; then mkdir ${results_dir}/archive/trial__0 ; fi
+#if find . -maxdepth 1 -type f -name '*__0.*' | grep -q 0 || [ -d ${results_dir}/archive/trial__0 ]; then i=1 ; fi
+if [ $i != 0 ] ; then
+	while find . -maxdepth 1 -type f -name '*__$(($i-1)).*' | grep -q 0 || [ -d ${results_dir}/archive/trial__$(($i-1)) ]
+	do
+		i=$(($i+1))
+	done
+fi
+echo "this is run number ${i}."
 echo
 
 # Putting earlier files into archive folder (if i is greater than 0). 
 
-echo -n "Making new archive_subfolder, and sending old files there... "
-if [ $i == 0 ]; then mkdir ${results_dir}/archive/trial__0 ; fi
+#if [ $i == 0 ]; then mkdir ${results_dir}/archive/trial__0 ; fi
 if [ $i -gt 0 ]
 then	
-	mkdir ${results_dir}/archive/trial__$(($i - 1))
+	echo -n "Making new archive_subfolder, and sending old files there... "
+	if [ ! -d ${results_dir}/archive/trial__$(($i - 1)) ] ; then mkdir ${results_dir}/archive/trial__$(($i - 1)) ; fi
 
 	for file_name in $(find ${results_dir} -maxdepth 1 -type f )
 	do
 		mv $file_name ${results_dir}/archive/trial__$(($i - 1))			
 	done
+	echo  done.
 	
-	if [ -d ${results_dir}/sim_output/store ] && [ $simulate == 1 ] && [ $sim_from_scratch == 1 ]; then rsync -r ${results_dir}/sim_output/store ${results_dir}/archive/trial__$(($i - 1)) ; fi
-	if [ -d ${results_dir}/val_output/store ] && [ $simulate_val == 1 ] && [ $sim_val_from_scratch == 1 ]; then rsync -r ${results_dir}/val_output/store ${results_dir}/archive/trial__$(($i - 1)) ; fi		
 fi
-echo  done.
+
 
 
 # Copying analysis_scripts into results folder. 
 
 echo -n "Copying analysis scripts to results folder... "
 cp $0 ${results_dir}
+cp $config_file ${results_dir}
 for file_name in $(find ${scripts_dir} -maxdepth 1 -type f )
 do
 	found=0
@@ -209,9 +211,10 @@ if [ $update_config == 1 ] || [ $i == 0 ] ; then
 	
 	python ${results_dir}/set_parameters.py -args "$1"
 	
-	echo -n "Writing new parameter-extension function... "
-	python ${results_dir}/config_pois.py -results_dir $results_dir
-	echo done.
+	#echo -n "Writing new parameter-extension function... "
+	#python ${results_dir}/config_pois.py -results_dir $results_dir
+	#echo done.
+	#echo
 	 
 else
 		
@@ -220,8 +223,7 @@ else
 	do	
 		found=0
 		check_i=$(($i - 1))
-		while [ $found == 0 ] && [ $check_i -gt 0 ]
-		do
+		while [ $found == 0 ] && [ $check_i -gt -1 ] ; do
 			for file_name in $(find ${results_dir}/archive/trial__$check_i -maxdepth 1 -type f )
 			do
 				if [ "${results_dir}/archive/trial__$check_i/${item}" == "$file_name" ]; then
@@ -231,14 +233,15 @@ else
 		    	done
 		    	
 			if [ $found == 1 ]; then 
-				rsync $file_name ${results_dir}
-				echo "Imported ${item} from run number $(($i - 1))"
+				mv $file_name ${results_dir}
+				echo "Moved ${item} from run number $(($i - 1))"
 			else
 				check_i=$(($check_i - 1))  
 			fi
 		done
 		if [ $found == 0 ]; then 
 			echo "ERROR: ${item} was not found in previous runs!"
+			echo
 			exit 1
 		fi		
 	done
@@ -250,103 +253,106 @@ fi
 
 
 
-
-
 #---------------------------------------------------------------------
 #-------------------------- Simulation -------------------------------
 #---------------------------------------------------------------------
 
-# move old store to most recent existing archive folder. 
-if [ $save_old_sims != 1 ] && [ $i != 0 ] ; then
+#Printing banner
+if [ $simulate == 1 ] \
+|| [ $save_old_sims == 1 ] \
+|| [[ -e $use_old_sims ]] \
+|| [ $use_old_sims == 0 ] \
+; then
+	echo
+	echo "Simulation"
+	echo "------------------------------------------------------"
+	echo
 
-	if [[ -e ${results_dir}/sim_output/store ]] ; then
+fi
+
+# move old store to most recent existing archive folder. 
+if [ $save_old_sims == 1 ] && [ $i != 0 ] ; then
+	if [[ -e ${results_dir}/sim_output/store ]] ; then	
 		
+		#Redundant loop; remove?
 		check_i=$(($i - 1))
-		while [ -e ${results_dir}/archive/trial__(($check_i-1)) ] && [ $check_i -gt 0 ]
-		do
-			check_i=$(($check_i - 1))
+		while [ ! -e ${results_dir}/archive/trial__$(($check_i-1)) ] && [ $check_i -gt 0 ] ; do
+			check_i=$(($check_i-1))
 		done
 		
-		if  [ $check_i > -1 ] ; then
-			echo -n "Moving old store to archive/trial $(($check_i-1))... "
-			rsync -r ${results_dir}/sim_output/store ${results_dir}/archive/trial__(($check_i-1))
+		if  [ $check_i > -1 ] && [[ -e ${results_dir}/sim_output/store ]] ; then
+			echo -n "Copying old store to archive/trial__$(($check_i))... "
+			rsync -r ${results_dir}/sim_output/store ${results_dir}/archive/trial__$(($check_i))
 			echo done. 
 		else
-			echo Error: No archive folders exist for previous runs. 
-			exit 1
-		fi
-		
-	fi
-	
+			if [ $check_i < 0 ] ; then
+				echo Error: No archive folders exist for previous runs. 
+				echo
+				exit 1
+			elif [[ -e ${results_dir}/sim_output/store ]] ; then
+				echo No old store found. 
+			fi
+		fi	
+	fi	
 fi	
 
-# Delete old store, unless chosen to keep, or if not saved. 
-if [ $use_old_sims != 1 ] && [ $save_old_sims != 0 ] ; then
+# Checking if $use_old_sims is specified appropriately 
+if [ $use_old_sims != 1 ]  && [ $use_old_sims != 0 ] && [[ ! -e $use_old_sims  ]]; then
+	echo Error: use_old_sims is invalid. Must be 1, 0, or an existing path. 
+	echo
+	exit 1
+fi
 
+# Delete old store, unless chosen to keep, or if not saved. 
+if [ -e $use_old_sims ] \
+|| [ $use_old_sims == 0 ] \
+; then
 	# Delete existing store if it exists
 	if [[ -e ${results_dir}/sim_output/store ]] ; then
 		echo -n "Deleting old store... "
 		rm -r ${results_dir}/sim_output/store
 		echo done.
 	fi
-	
+fi
+
+# Making a new store directory if appropriate
+if [[ ! -e ${results_dir}/sim_output/store ]] ; then
 	# Make new store dir
 	mkdir ${results_dir}/sim_output/store
-	echo Made new empty store folder.
+	echo Made new empty store folder in sim_output.
+	echo
 fi
 
 # import store from elswhere, if so chosen
-if [[ -e "$import_old_sims" ]] ; then
+if [[ -e "$use_old_sims" ]] ; then
+	echo -n "Importing the store $use_old_sims(.sync)... "
+	rsync -r $use_old_sims ${results_dir}/sim_output/store
+	rsync -r $use_old_sims.sync ${results_dir}/sim_output/store
+	echo done.
+	echo
+fi
+	
 
-	# Copy store from elswhere
-	rsync -r $import_old_sims/store ${results_dir}/sim_output/store
-	rsync -r $import_old_sims/store ${results_dir}/sim_output/store.sync
+if [ $simulate == 1 ] ; then
 	
+	# Configure simulation pipeline
+	echo "Writing simulate.sh... "
+	python $results_dir/config_simulate.py -path $results_dir
+	chmod +x $results_dir/simulate.sh
+	echo "Done writing simulate.sh."
+	echo 
 	
-if [ $import_old_sims == 1 ] ; then
-	# Makes a new store folder if it doesn't already exist.
-	if [[ ! -e ${results_dir}/sim_output/store ]] ; then
-		mkdir ${results_dir}/sim_output/store
-		echo Made new empty store folder.
-	fi
+	# Run simulate.sh
+	
+	echo "Running simulate.sh... "
+	$results_dir/simulate.sh
+	
+	mv $results_dir/sim_output/sim_outputs $results_dir/sim_output/sim_outputs__$i
+
+	echo 
 fi
 
 
-
-# Config simulation pipeline
-# set store path (and initialize if necessary)
-# simulate
-
-
-
-
-
-
-# [ $simulate == 1 ]
-#then
-	
-#	echo
-#	echo "Simulation"
-#	echo "------------------------------------------------------"
-#	echo
-	
-#	${results_dir}/simulate.py
-	
-#	wait
-	
-#	mv sim_output/sim_output.txt sim_output/sim_output__${i}.txt
-	
-
-	
-
-
-
-
-
-
-
-# Writing shell script and execution
-# Make possibility to copy store from somewhere else. (implement in python?)
 
 
 #---------------------------------------------------------------------
@@ -354,9 +360,124 @@ fi
 #---------------------------------------------------------------------
 
 
-# Writing shell script and execution
-# Make possibility to copy network from somewhere else. (implement in python?)
-# Implement way to define which network architecture to use
+
+
+#Printing banner
+if [ $train == 1 ] \
+|| [ $save_old_net == 1 ] \
+|| [[ -e $use_old_net ]] \
+|| [ $use_old_net == 0 ] \
+; then
+	echo
+	echo "Training"
+	echo "------------------------------------------------------"
+	echo
+
+fi
+
+
+# ************Move network architecture file here***********************
+
+
+# move old net to most recent existing archive folder. 
+if [ $save_old_net == 1 ] && [ $i != 0 ] ; then
+	if [[ -e ${results_dir}/train_output/net ]] ; then	
+		
+		#Redundant loop; remove?
+		check_i=$(($i - 1))
+		while [ ! -e ${results_dir}/archive/trial__$(($check_i-1)) ] && [ $check_i -gt 0 ] ; do
+			check_i=$(($check_i-1))
+		done
+		
+		if  [ $check_i > -1 ] && [[ -e ${results_dir}/train_output/net ]] ; then
+			echo -n "Copying old store to archive/trial__$(($check_i))... "
+			rsync -r ${results_dir}/train_output/net ${results_dir}/archive/trial__$(($check_i))
+			echo done. 
+		else
+			if [ $check_i < 0 ] ; then
+				echo Error: No archive folders exist for previous runs. 
+				echo
+				exit 1
+			elif [[ -e ${results_dir}/train_output/net ]] ; then
+				echo No old store found. 
+			fi
+		fi	
+	fi	
+fi	
+
+# Checking if $use_old_sims is specified appropriately 
+if [ $use_old_net != 1 ]  && [ $use_old_net != 0 ] && [[ ! -e $use_old_net  ]]; then
+	echo Error: use_old_net is invalid. Must be 1, 0, or an existing path. 
+	echo
+	exit 1
+fi
+
+# Delete old net, unless chosen to keep, or if not saved. 
+if [ -e $use_old_net ] \
+|| [ $use_old_net == 0 ] \
+; then
+	# Delete existing store if it exists
+	if [[ -e ${results_dir}/train_output/net ]] ; then
+		echo -n "Deleting old net... "
+		rm -r ${results_dir}/train_output/net
+		echo done.
+	fi
+fi
+
+# Making a new store directory if appropriate
+if [[ ! -e ${results_dir}/train_output/net ]] ; then
+	# Make new net dir
+	mkdir ${results_dir}/train_output/net
+	echo Made new empty net folder in train_output.
+	echo
+fi
+
+# import net from elswhere, if so chosen
+if [[ -e "$use_old_net" ]] ; then
+	echo -n "Importing the net $use_old_net... "
+	rsync -r $use_old_net ${results_dir}/train_output/net
+	echo done.
+	echo
+fi
+
+# import architecture from elswhere, if so chosen
+if [[ -e "$architecture" ]] ; then
+	echo -n "Importing the architecture $architecture... "
+	rsync -r --rename="network.py" $architecture ${results_dir}/train_output/net/
+	echo done.
+	echo
+elif [[ "$architecture" == "" ]] ; then
+	echo -n "Importing the architecture $scripts_dir/network.py... "
+	rsync -r $scripts_dir/network.py ${results_dir}/train_output/net/
+	echo done.
+	echo
+else
+	echo Error: Architecture badly defined. Should be an existing python file, or \"\". 
+	echo
+	exit 1
+fi
+	
+
+if [ $train == 1 ] ; then
+	
+	# Configure training pipeline
+	echo "Writing train.sh... "
+	python $results_dir/config_train.py -path $results_dir
+	chmod +x $results_dir/train.sh
+	echo "Done writing train.sh."
+	echo 
+	
+	# Run simulate.sh
+	
+	# echo "Running train.sh... "
+	echo "Training in progress. Run squeue -u \"$USER\" to see status."
+	sbatch --wait $results_dir/train.sh
+	
+	mv $results_dir/train_output/train_outputs $results_dir/train_output/train_outputs__$i
+
+	echo 
+fi
+
 
 
 
