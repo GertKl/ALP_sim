@@ -96,7 +96,7 @@ if __name__ == "__main__":
         f.write("\n echo Simulation in progress. Run squeue -u \"$USER\" to see status. ")
         f.write("\n continue=1")
         f.write("\n while [[ $continue == 1 ]] ; do")
-        f.write("\n \t sleep 5")
+        f.write("\n \t sleep "+str(10+int(n_jobs_sim/10.))+"")
         f.write("\n \t continue=0")
         f.write("\n \t for job_id in \"${job_ids[@]}\" ; do")
         f.write("\n \t \t state_str=$( sacct --noheader --format=State --jobs=$job_id )")

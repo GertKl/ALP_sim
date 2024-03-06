@@ -16,6 +16,7 @@ ignore_scripts=(\
 
 configuration_files=(\
 "config_variables.pickle" \
+"physics_variables.pickle" \
 "check_variables.txt" \
 "param_function.py" \
 )
@@ -202,47 +203,68 @@ echo
 
 # Make possibility to copy store from somewhere else. (implement in python?)
 
-if [ $update_config == 1 ] || [ $i == 0 ] ; then
+if [ $update_config == 1 ] || [ $update_physics == 1 ] || [ $i == 0 ] ; then
 	
 	echo
 	echo "Converting and saving new analysis variables"
 	echo "------------------------------------------------------"
 	echo
 	
-	python ${results_dir}/set_parameters.py -args "$1"
+	if [ $update_config_on_cluster == 1 ] ; then
+		echo -n Writing set_parameters.sh...
+		python $results_dir/config_set_parameters.py -path $results_dir
+		echo done.
+		echo Submitting set_parameters.sh to cluster. Run squeue -u \"$USER\" to see status.
+		echo Output for this step will be sent to $results_dir/set_parameters_output/slurm-%j-$i.out.
+		if [ ! -e $results_dir/set_parameters_output ] ; then mkdir $results_dir/set_parameters_output ; fi
+		sbatch \
+		--wait \
+		--output=$results_dir/set_parameters_output/slurm-%j-$i.out \
+		--job-name="set_parameters" \
+		--account=$account \
+		--partition=$partition_config \
+		--time=$max_time_config \
+		--mem-per-cpu=${max_memory_config}G \
+		--qos=$qos_config \
+		${results_dir}/set_parameters.sh "$1"
+		echo Finished setting up parameters\!
+	else
+		python ${results_dir}/set_parameters.py -args "$1"
+	fi
 	
 	#echo -n "Writing new parameter-extension function... "
 	#python ${results_dir}/config_pois.py -results_dir $results_dir
 	#echo done.
 	#echo
-	 
-else
-		
+
+elif [ $update_config == 0 ] || [ $update_physics == 0 ] ; then	
 	echo "Checking for variables defined in previous runs... "
 	for item in "${configuration_files[@]}"
 	do	
-		found=0
-		check_i=$(($i - 1))
-		while [ $found == 0 ] && [ $check_i -gt -1 ] ; do
-			for file_name in $(find ${results_dir}/archive/trial__$check_i -maxdepth 1 -type f )
-			do
-				if [ "${results_dir}/archive/trial__$check_i/${item}" == "$file_name" ]; then
-					found=1
-					break
+		if [ ! -e $results_dir/$item ]; then
+			found=0
+			check_i=$(($i - 1))
+			while [ $found == 0 ] && [ $check_i -gt -1 ] ; do
+				for file_name in $(find ${results_dir}/archive/trial__$check_i -maxdepth 1 -type f )
+				do
+					if [ "${results_dir}/archive/trial__$check_i/${item}" == "$file_name" ]; then
+						found=1
+						break
+					fi
+			    	done
+			    	
+				if [ $found == 1 ]; then 
+					mv $file_name ${results_dir}
+					echo "Moved ${item} from run number $(($i - 1))"
+				else
+					check_i=$(($check_i - 1))  
 				fi
-		    	done
-		    	
-			if [ $found == 1 ]; then 
-				mv $file_name ${results_dir}
-				echo "Moved ${item} from run number $(($i - 1))"
-			else
-				check_i=$(($check_i - 1))  
+			done
+			if [ $found == 0 ]; then 
+				echo "ERROR: ${item} was not found in previous runs!"
+				echo
+				exit 1
 			fi
-		done
-		if [ $found == 0 ]; then 
-			echo "ERROR: ${item} was not found in previous runs!"
-			echo
-			exit 1
 		fi		
 	done
 	echo
@@ -261,7 +283,7 @@ fi
 if [ $simulate == 1 ] \
 || [ $save_old_sims == 1 ] \
 || [[ -e $use_old_sims ]] \
-|| [ $use_old_sims == 0 ] \
+|| { [ $use_old_sims == 0 ] && [ $simulate == 1 ]; } \
 ; then
 	echo
 	echo "Simulation"
@@ -305,7 +327,7 @@ fi
 
 # Delete old store, unless chosen to keep, or if not saved. 
 if [ -e $use_old_sims ] \
-|| [ $use_old_sims == 0 ] \
+|| { [ $use_old_sims == 0 ] && [ $simulate == 1 ]; } \
 ; then
 	# Delete existing store if it exists
 	if [[ -e ${results_dir}/sim_output/store ]] ; then
@@ -366,7 +388,7 @@ fi
 if [ $train == 1 ] \
 || [ $save_old_net == 1 ] \
 || [[ -e $use_old_net ]] \
-|| [ $use_old_net == 0 ] \
+|| { [ $use_old_net == 0 ] && [ $train == 1 ]; } \
 ; then
 	echo
 	echo "Training"
@@ -414,7 +436,7 @@ fi
 
 # Delete old net, unless chosen to keep, or if not saved. 
 if [ -e $use_old_net ] \
-|| [ $use_old_net == 0 ] \
+|| { [ $use_old_net == 0 ] && [ $train == 1 ]; } \
 ; then
 	# Delete existing store if it exists
 	if [[ -e ${results_dir}/train_output/net ]] ; then
@@ -441,17 +463,17 @@ if [[ -e "$use_old_net" ]] ; then
 fi
 
 # import architecture from elswhere, if so chosen
-if [[ -e "$architecture" ]] ; then
+if [[ -e "$architecture" ]] && [ $train == 1 ]  ; then
 	echo -n "Importing the architecture $architecture... "
 	rsync -r --rename="network.py" $architecture ${results_dir}/train_output/net/
 	echo done.
 	echo
-elif [[ "$architecture" == "" ]] ; then
+elif [[ "$architecture" == "" ]] && [ $train == 1 ] ; then
 	echo -n "Importing the architecture $scripts_dir/network.py... "
 	rsync -r $scripts_dir/network.py ${results_dir}/train_output/net/
 	echo done.
 	echo
-else
+elif [ $train == 1 ] ; then
 	echo Error: Architecture badly defined. Should be an existing python file, or \"\". 
 	echo
 	exit 1
