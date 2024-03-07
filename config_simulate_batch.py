@@ -8,19 +8,22 @@ Created on Mon Jan 29 11:10:57 2024
 
 
 
-import os
 import argparse
 import pickle
 
 
+
+filename_variables = "config_variables.pickle"
+
+
 if __name__ == "__main__":
-    
-    
+
     parser = argparse.ArgumentParser(description="")
     parser.add_argument("-path", type=str)
     args = parser.parse_args()
-    
-    with open(args.path +'/config_variables.pickle', 'rb') as file:
+        
+    # loading config parameters
+    with open(args.path+'/' +filename_variables, 'rb') as file:
         config_dict = pickle.load(file)
     for key in config_dict.keys():
         locals()[key] = config_dict[key]

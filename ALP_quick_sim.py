@@ -495,6 +495,7 @@ class ALP_sim():
                    obs: Union[list,np.ndarray,dict[str,np.ndarray]]=None,
                    exp: Union[list,np.ndarray,dict[str,np.ndarray]]=None,
                    null: Union[list,np.ndarray,dict[str,np.ndarray]]=None,
+                   pgg: Union[list,np.ndarray]=None,
                    are_residuals=False
                    ) -> None:
         
@@ -507,6 +508,7 @@ class ALP_sim():
             -  obs:              Vector of observed counts, e.g. from earlier simulations.
             -  exp:              Vector of expected counts, e.g. from earlier simulations.
             -  null:             Vector of null-hypothesis counts, e.g. from earlier simulations.
+            -  pgg:              Vector of photon_survival probabilities, e.g. from earlier simulations.
             -  are_residuals     Whether the imported counts are residuals of the null-hypothesis.
                                  Setting to true means both expected and observed counts will be
                                  interpreted as residuals, no matter the other input to this 
@@ -518,17 +520,14 @@ class ALP_sim():
         obs_counts, obs_isnone = ALP_sim.format_counts(obs)
         exp_counts, exp_isnone = ALP_sim.format_counts(exp)
         null_counts, null_isnone = ALP_sim.format_counts(null)
+        pgg, pgg_isnone = ALP_sim.format_counts(pgg)
         
         
         if not obs_isnone:
             if len(obs_counts['y']) != self.nbins:
                 raise ValueError("Imported observed counts should have same length as self.nbins")
             else:
-                # if not np.array_equiv(obs_counts['y'], obs_counts['y'].astype(int)): 
-                #     warnings.warn("Imported observed counts should all be integers")
                 self.counts_obs = obs_counts                
-        # else:
-        #     print("No observed counts specified for import, keeping any old ones")
             
         
         if not exp_isnone:
@@ -536,8 +535,6 @@ class ALP_sim():
                 self.counts_exp = exp_counts
             else:
                 raise ValueError("Imported expected counts should have same length as self.nbins")
-        # else:
-        #     print("No expected counts specified for import, keeping any old ones")
             
         
         if not null_isnone:
@@ -546,40 +543,23 @@ class ALP_sim():
                 self._need_new_null = False
             else:
                 raise ValueError("Imported null-hypothesis counts should have same length as self.nbins")
-        # else:
-        #     print("No null-hypothesis counts specified for import, keeping any old ones")
+                
+                
+        if not pgg_isnone:
+            if len(pgg['y']) == self.nbins:
+                self.pgg = pgg
+            else:
+                raise ValueError("Imported survival probabilities should have same length as self.nbins")
         
         self._residuals = are_residuals
     
     
-    def generate_null(self, 
-                      #params: list[float] =[],
-                      ): #-> dict[str,np.ndarray]:
+    def generate_null(self, )-> None: 
         
-        # ''' 
+
 
         print("Generating new null-hypothesis... ",end="")
-        # Input:
-        #     - params:           Input parameters corresponding to chosen null hypothesis. 
-        # '''
-        
-        # if isinstance(params,list) or isinstance(params,np.ndarray):
-        #     if len(params) > 0:
-        #         params_use = params
-        #     else:
-        #         params_use = self.params.copy()
-        #         params_use[0] = 0
-        #         params_use[1] = 0
-        # else:
-        #     raise TypeError("Params are of unexpected type. Expected list or numpy array.")
-            
-        
-        # if self.counts_null == None:
-        #     self.generate_null()
-        #     # print("counts_null: " + str(self.counts_null))
-        #     if self.counts_null == None:
-        #         raise ValueError("self.generate_null() did not result in self.counts_null that\
-        #                          are not None.")
+
 
         need_new_null_current = self._need_new_null
         self._need_new_null=False
@@ -1106,7 +1086,7 @@ class ALP_sim():
         
         y = (self.bin_centers-self._loc)*m + g
         
-        out = dict(y = y)
+        out = self.convert_counts(y)
     
         return out
     
@@ -1139,7 +1119,7 @@ class ALP_sim():
         
         y = (self.bin_centers-self._loc)**2*a + (self.bin_centers-self._loc)*b + c
         
-        out = dict(y = y)
+        out = self.convert_counts(y)
     
         return out
     
@@ -1176,7 +1156,9 @@ class ALP_sim():
         
         y = a*x + b + (c*x+d)*np.sin(e*x+f)
         
-        return dict(y=y)
+        out = self.convert_counts(y)
+        
+        return out
         
 
     def compute_case(self,

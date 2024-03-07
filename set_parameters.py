@@ -17,22 +17,6 @@ import subprocess
 import importlib
 from types import ModuleType
 
-    
-def import_file(path: str,) -> ModuleType:
-    '''
-    Imports the python file at the specified path and returns it as a module. 
-    Input:
-        -  path:            Path of the python file. 
-    Output:
-        -  module:          Module
-    '''
-    module_name = path.split("/")[-1].split(".py")[0]
-    spec = importlib.util.spec_from_file_location(module_name, path)
-    globals()[module_name] = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(globals()[module_name])
-    module = globals()[module_name] 
-    return module
-
 
 def save_variables(variables: dict, path: str) -> None:  
     '''
@@ -46,7 +30,6 @@ def save_variables(variables: dict, path: str) -> None:
 filename_variables = "config_variables.pickle"
 filename_phys = "physics_variables.pickle"
 filename_control = "check_variables.txt"
-
 
 
 if __name__ == "__main__":
@@ -195,11 +178,11 @@ if __name__ == "__main__":
         print()
         
         # importing parameter function
-        param_function = import_file(results_dir+"/param_function.py").param_function
+        from param_function import param_function
     
         # Creating and formatting ALP_sim object. 
         print("Importing ALP_sim... ", end="", flush=True)
-        ALP_sim = import_file(results_dir+"/ALP_quick_sim.py").ALP_sim
+        from ALP_quick_sim import ALP_sim
         print("done.")
         print("Initializing new ALP_sim object... ", end='', flush=True)
         A = ALP_sim(set_null=0, set_obs=0)
@@ -235,7 +218,6 @@ if __name__ == "__main__":
         
         A.generate_null()
         print()
-        
     
         # Making sure POI_indices (marginals) is a list. 
         POI_indices=config_dict['POI_indices']
@@ -245,7 +227,7 @@ if __name__ == "__main__":
         
         # Writing remaining physics variables to config_phys_dict, and deleting coresponding
         # variablses from config_dict to avoid confusion. 
-        # config_phys_dict['A'] = A
+        config_phys_dict['A'] = A
         config_phys_dict['POI_indices'] = POI_indices
         
         del config_dict['model_params']

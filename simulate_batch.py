@@ -8,23 +8,34 @@ Created on Fri Jan 26 17:13:01 2024
 
 
 import swyft
-import os
 from ALP_quick_sim import ALP_sim
 from alp_swyft_simulator import ALP_SWYFT_Simulator
 import pickle
 import argparse
 
-import time
+    
+filename_variables = "config_variables.pickle"
+filename_phys = "physics_variables.pickle"
 
 
 if __name__ == "__main__":
-    
-    
+
     parser = argparse.ArgumentParser(description="")
     parser.add_argument("-path", type=str)
     args = parser.parse_args()
     
-    with open(args.path +'/config_variables.pickle', 'rb') as file:
+    # loading config parameters
+    with open(args.path+'/' +filename_variables, 'rb') as file:
+        config_dict = pickle.load(file)
+    for key in config_dict.keys():
+        locals()[key] = config_dict[key]
+        
+    print("Importing ALP_sim... ", end="", flush=True)
+    from ALP_quick_sim import ALP_sim
+    print("done.")
+    
+    # loading physics parameters
+    with open(args.path+'/' +filename_phys, 'rb') as file:
         config_dict = pickle.load(file)
     for key in config_dict.keys():
         locals()[key] = config_dict[key]

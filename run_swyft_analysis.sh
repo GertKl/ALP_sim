@@ -215,7 +215,7 @@ if [ $update_config == 1 ] || [ $update_physics == 1 ] || [ $i == 0 ] ; then
 		python $results_dir/config_set_parameters.py -path $results_dir
 		echo done.
 		echo Submitting set_parameters.sh to cluster. Run squeue -u \"$USER\" to see status.
-		echo Output for this step will be sent to $results_dir/set_parameters_output/slurm-%j-$i.out.
+		echo Output for this step will be sent to $results_dir/set_parameters_output/slurm-\<job ID\>-$i.out.
 		if [ ! -e $results_dir/set_parameters_output ] ; then mkdir $results_dir/set_parameters_output ; fi
 		sbatch \
 		--wait \
@@ -465,7 +465,7 @@ fi
 # import architecture from elswhere, if so chosen
 if [[ -e "$architecture" ]] && [ $train == 1 ]  ; then
 	echo -n "Importing the architecture $architecture... "
-	rsync -r --rename="network.py" $architecture ${results_dir}/train_output/net/
+	rsync $architecture ${results_dir}/train_output/net/"network.py"
 	echo done.
 	echo
 elif [[ "$architecture" == "" ]] && [ $train == 1 ] ; then
