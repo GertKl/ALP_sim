@@ -220,9 +220,11 @@ class ALP_sim():
             -  pointing:            2D list, icrs coordinates of target, in degrees.
             -  livetime:            Effective observation time [hours].
             -  irf_file:            Path of IRF file to use.
-            -  geom                 ["gamma" (default), "simple" ]. If "gamma", sets up 
+            -  geom                 ["gamma" (default), "simple", "simple_log"]. If "gamma", sets up 
                                     geometry and dataset for gamma observations. if "simple", only
-                                    sets up straight-forward equidistant bin-centers.  
+                                    sets up straight-forward equidistant bin-centers. "simple_log"
+                                    sets up log-spaced bin-centers, without setting up a gammapy 
+                                    dataset.
             -  new_null:            Unless set to false, using configure_obs() will update 
                                     the null-hypothesis (self.counts_null) next time a simulation is
                                     generated in residual mode (activated using 
@@ -712,11 +714,16 @@ class ALP_sim():
             
             self.bin_centers = np.linspace(self.emin,self.emax, self.nbins)
             self.dataset = None
-
+            
+        elif self._geom_type == "simple_log":
+            
+            bin_mins = np.linspace(np.log10(self.emin), np.log10(self.emax), self.nbins+1)
+            self.bin_centers = 10**((bin_mins[1:]+bin_mins[:-1])/2)
+            self.dataset = None
 
         else:
             raise ValueError("Invalid geom type. Change by calling \
-                             self.configure_obs(geom=[\"gamma\",\"simple\"])")
+                             self.configure_obs(geom=[\"gamma\",\"simple\",\"simple_log\"])")
             
 
    
@@ -1231,24 +1238,13 @@ class ALP_sim():
         string3="Counts"
         string4 = "" 
         
-        # if len(self.params)>1 and len(self.param_names)>1:
-        #     string4 = "$"+self.param_names[0]+" = {:.1f} \, \mathrm{{neV}} \mathrm{{,}} \; ".format(self.params[0])+self.param_names[1]+" = {:.1f} \\times  10^{{-11}} \, \mathrm{{ GeV}}^{{-1}} $".format(self.params[1])
-        # else:
-        #     string4 = ""
-        
 
-            
-
-        # mod = model
-        # if model != "": mod = "_"+model
-        
-        # mod_func = eval("self.model"+mod)
         
         mod_func = self.simulate
         
 
         if not null:
-            if new_counts: # or self._need_new_null:
+            if new_counts:
                 self.counts_exp = mod_func(self.params)
                 self.counts_obs = self.noise(self.counts_exp, self.params)
                 if self.with_residuals: self._residuals = True
@@ -1264,55 +1260,62 @@ class ALP_sim():
                 
             range_string4 = len(explicit_params) if isinstance(label_exp, bool) else min(int(label_exp),len(explicit_params))
             for i in range(range_string4):
-                # stringp = ":.1e" if p<1 or p>1000 else ":.1f"
                 stringp = ":.2g"
-                # print(label_exp)
                 if i != range_string4-1:
                     string4 = string4 + "$"+self.param_names[i]+(" = {"+stringp+"} \, \mathrm{{").format(explicit_params[i])+self.param_units[i]+"}} $ , "
                 else:
                     string4 = string4 + "$"+self.param_names[i]+(" = {"+stringp+"} \, \mathrm{{").format(explicit_params[i])+self.param_units[i]+"}}$"
             
         else:
-            #if new_counts or (new_counts==None and self._need_new_null): self.generate_null()
             counts_exp_plot = self.counts_null
             if self.with_residuals: counts_exp_plot = self.subtract_null(counts_exp_plot)
             counts_obs_plot = self.noise(counts_exp_plot, self.params)['y']
             counts_exp_plot = counts_exp_plot['y']
             string4 = "null hypothesis"
 
-        # counts_exp_plot = self.counts_exp['y']
-        # counts_obs_plot = self.counts_obs['y']
-        # if self.with_residuals: counts_null_plot = self.counts_null['y']
 
-
-        errorbars = counts_obs_plot.copy()
-        uncertainty = counts_exp_plot.copy()
-        if self.with_residuals:
-            errorbars = self.subtract_null(errorbars,add=True)['y']
-            uncertainty = self.subtract_null(uncertainty,add=True)['y']
-            # errorbars = errorbars + counts_null_plot
-            # uncertainty = uncertainty + counts_null_plot
-            string1 = "Residuals of "
-        if self.with_logcounts:
-            if self._which_noise == "poisson":
-                with np.errstate(divide='ignore', invalid='ignore'):
-                    # print("errorbars: " + str(errorbars))
-                    upper_error = np.where(errorbars==-np.inf, 0, np.log10(10**errorbars + np.sqrt(10**errorbars)) - errorbars)
-                    lower_error = np.where(errorbars==-np.inf, 0, errorbars - np.log10(10**errorbars - np.sqrt(10**errorbars)))
-                    upper_uncertainty = np.where(uncertainty==-np.inf, 0, np.log10(10**uncertainty + np.sqrt(10**uncertainty)) - uncertainty)
-                    lower_uncertainty = np.where(uncertainty==-np.inf, 0, uncertainty - np.log10(np.max(np.array([10**uncertainty - np.sqrt(10**uncertainty),np.zeros(len(uncertainty))]),axis=0)))
-            elif self._which_noise == "gauss":
-                raise NotImplementedError("Not implemented gaussian noise for log of counts")
-            string2 = "log of "
+        if errors:
+            errorbars = counts_obs_plot.copy()
+            if self.with_residuals:
+                errorbars = self.subtract_null(errorbars,add=True)['y']
+                string1 = "Residuals of "
+            if self.with_logcounts:
+                if self._which_noise == "poisson":
+                    with np.errstate(divide='ignore', invalid='ignore'):
+                        upper_error = np.where(errorbars==-np.inf, 0, np.log10(10**errorbars + np.sqrt(10**errorbars)) - errorbars)
+                        lower_error = np.where(errorbars==-np.inf, 0, errorbars - np.log10(10**errorbars - np.sqrt(10**errorbars)))
+                elif self._which_noise == "gauss":
+                    raise NotImplementedError("Not implemented gaussian noise for log of counts")
+                string2 = "log of "
+            else:
+                if self._which_noise == "poisson":
+                    lower_error, upper_error = np.sqrt(errorbars), np.sqrt(errorbars)
+                elif self._which_noise == "gauss":
+                    lower_error, upper_error = np.ones_like(errorbars)*self._noise_sigma, np.ones_like(errorbars)*self._noise_sigma
         else:
-            if self._which_noise == "poisson":
-                lower_error, upper_error = np.sqrt(errorbars), np.sqrt(errorbars)
-                lower_uncertainty, upper_uncertainty = np.sqrt(uncertainty), np.sqrt(uncertainty)
-            elif self._which_noise == "gauss":
-                lower_error, upper_error = np.ones_like(errorbars)*self._noise_sigma, np.ones_like(errorbars)*self._noise_sigma
-                lower_uncertainty, upper_uncertainty = np.ones_like(uncertainty)*self._noise_sigma, np.ones_like(uncertainty)*self._noise_sigma
+            lower_error, upper_error = 0,0
+            
 
-        # print("Upper_uncertainty: " +  str(upper_uncertainty))     
+        if errorbands:
+            uncertainty = counts_exp_plot.copy()
+            if self.with_residuals:
+                uncertainty = self.subtract_null(uncertainty,add=True)['y']
+                string1 = "Residuals of "
+            if self.with_logcounts:
+                if self._which_noise == "poisson":
+                    with np.errstate(divide='ignore', invalid='ignore'):
+                        upper_uncertainty = np.where(uncertainty==-np.inf, 0, np.log10(10**uncertainty + np.sqrt(10**uncertainty)) - uncertainty)
+                        lower_uncertainty = np.where(uncertainty==-np.inf, 0, uncertainty - np.log10(np.max(np.array([10**uncertainty - np.sqrt(10**uncertainty),np.zeros(len(uncertainty))]),axis=0)))
+                elif self._which_noise == "gauss":
+                    raise NotImplementedError("Not implemented gaussian noise for log of counts")
+                string2 = "log of "
+            else:
+                if self._which_noise == "poisson":
+                    lower_uncertainty, upper_uncertainty = np.sqrt(uncertainty), np.sqrt(uncertainty)
+                elif self._which_noise == "gauss":
+                    lower_uncertainty, upper_uncertainty = np.ones_like(uncertainty)*self._noise_sigma, np.ones_like(uncertainty)*self._noise_sigma
+        else:
+            lower_uncertainty, upper_uncertainty = 0,0
         
         # Determining the axis limits of the plot
         xmin = self.xmin
@@ -1325,10 +1328,7 @@ class ALP_sim():
             
             minmax_array_nonzero = minmax_array[minmax_array!=0]
             ymin_nonzero = min(minmax_array_nonzero) if minmax_array_nonzero.any() else np.inf
-            bin_centers_nonzero = self.bin_centers.copy()#[counts_exp_plot!=0]
-            # print("bin_centers: " + str(self.bin_centers))
-            # print("counts_exp_plot: " + str(counts_exp_plot))
-            # print("bin_centers[counts]: " + str(self.bin_centers[counts_exp_plot!=0]) )
+            bin_centers_nonzero = self.bin_centers.copy()
             xmin_nonzero = min(bin_centers_nonzero) if bin_centers_nonzero.any() else np.inf
         else:
             ymin_nonzero = ymin
@@ -1336,10 +1336,10 @@ class ALP_sim():
 
         
         if not xmin: 
-            xmin=min(self.bin_centers)#[counts_exp_plot != 0])
+            xmin=min(self.bin_centers)
 
         if not xmax: 
-            xmax=max(self.bin_centers)#[counts_exp_plot != 0])
+            xmax=max(self.bin_centers)
         
         if xmin == xmax:
             xmin, xmax = xmin-1, xmax+1
@@ -1349,10 +1349,6 @@ class ALP_sim():
         if not ymin:
             lower_counts = np.concatenate((counts_obs_plot - lower_error, counts_exp_plot))
             ymin=min(lower_counts[lower_counts != -np.inf])
-            # print("ymin2: " + str(ymin))
-            # print("lower_counts2: " + str(lower_counts))
-            # print("lower_error: " + str(lower_error))
-            # print("counts_obs_plot: " + str(counts_obs_plot))
         if not ymax:
             ymax=max(np.concatenate((counts_obs_plot + upper_error, counts_exp_plot)))       
         if ymin == ymax:
@@ -1399,9 +1395,6 @@ class ALP_sim():
                 xmin_prev, xmax_prev = ax.get_xlim()
                 ymin_prev, ymax_prev = ax.get_ylim()
         
-            # print("xmax: " + str(xmax))
-            # print("xmin_nonzero: " + str(xmin_nonzero))
-        
             if self._logx or (self._logx==None and (abs(xmax/xmin_nonzero) > 100 and not xmin < 0)): 
                 ax.set_xscale("log")
                 xmin = 0.5*xmin_nonzero
@@ -1418,33 +1411,12 @@ class ALP_sim():
                 legend_position="upper right"
             
             
-            # print("ymin1: " + str(ymin))
-            # print("ymin_prev1: " + str(ymin_prev))
-            
             xmin=min(xmin,xmin_prev)
             xmax=max(xmax,xmax_prev)
             ymin=min(ymin,ymin_prev)
             ymax=max(ymax,ymax_prev)
                          
-            
-            
-            # if not self.xmin: 
-            #     ax.set_xlim(xmin=xmin)
-            # else:
-            #     ax.set_xlim(xmin=self.xmin)
-            # if not self.xmax: 
-            #     ax.set_xlim(xmax=xmax)
-            # else:
-            #     ax.set_xlim(xmax=self.xmax)
-            # if not self.ymin: 
-            #     ax.set_ylim(ymin=ymin)
-            # else:
-            #     ax.set_ylim(ymin=self.ymin)
-            # if not self.ymax: 
-            #     ax.set_ylim(ymax=ymax)
-            # else:
-            #     ax.set_ylim(ymax=self.ymax)
-            
+
             
             if self.xmin: 
                 ax.set_xlim(xmin=self.xmin)
@@ -1491,20 +1463,12 @@ class ALP_sim():
                     color_band_lightness = 0.7
                     color_band_light = (color_band[0] + (1-color_band[0])*color_band_lightness,color_band[1]+ (1-color_band[1])*color_band_lightness, color_band[2]+(1-color_band[2])*color_band_lightness)
                     
-                    # print(1)
-                    # print(lower_uncertainty)
-                    # print(upper_uncertainty)
-                    
+
                     lower_uncertainty_noinf = lower_uncertainty[np.logical_and(counts_exp_plot != -np.inf,counts_exp_plot!=np.inf)]
                     lower_uncertainty_noinf = np.where(lower_uncertainty_noinf==np.inf,abs(counts_exp_noinf - ymin)+0.1*abs(ymin),lower_uncertainty_noinf)
-                    # lower_uncertainty_noinf = np.where(lower_uncertainty_noinf==0,counts_exp_noinf - ymin,lower_uncertainty_noinf)        
-                    # lower_uncertainty_noinf = np.where(lower_uncertainty_noinf==-np.inf,0,lower_uncertainty_noinf)  
                     upper_uncertainty_noinf = upper_uncertainty[np.logical_and(counts_exp_plot != -np.inf,counts_exp_plot!=np.inf)]
                     upper_uncertainty_noinf = np.where(upper_uncertainty_noinf==np.inf,0.1*abs(ymax)+abs(ymax-counts_exp_noinf),upper_uncertainty_noinf)
-                    
-                    # print(2)
-                    # print(lower_uncertainty_noinf)
-                    # print(upper_uncertainty_noinf)
+
                     
                     ax.fill_between(self.bin_centers[counts_exp_plot != -np.inf], counts_exp_noinf-lower_uncertainty_noinf, counts_exp_noinf + upper_uncertainty_noinf, color=color_band_light, alpha=0.5*(1-transparency))
                           
@@ -1512,14 +1476,14 @@ class ALP_sim():
             if plot_obs:
                 
                 counts_obs_noinf = counts_obs_plot[np.logical_and(counts_obs_plot!=-np.inf,counts_obs_plot!=np.inf)]
-                lower_error_noinf = lower_error[np.logical_and(counts_obs_plot!=-np.inf,counts_obs_plot!=np.inf)]
-                lower_error_noinf = np.where(lower_error_noinf==np.inf,abs(counts_obs_noinf - ymin),lower_error_noinf)
-                upper_error_noinf = lower_error[np.logical_and(counts_obs_plot!=-np.inf,counts_obs_plot!=np.inf)]
-                upper_error_noinf = np.where(upper_error_noinf==np.inf,abs(counts_obs_noinf - ymax),upper_error_noinf)
                           
                 full_label_obs = "Simulated"+appendix+"for " + string4 if label_obs else None
                 
                 if errors:
+                    lower_error_noinf = lower_error[np.logical_and(counts_obs_plot!=-np.inf,counts_obs_plot!=np.inf)]
+                    lower_error_noinf = np.where(lower_error_noinf==np.inf,abs(counts_obs_noinf - ymin),lower_error_noinf)
+                    upper_error_noinf = lower_error[np.logical_and(counts_obs_plot!=-np.inf,counts_obs_plot!=np.inf)]
+                    upper_error_noinf = np.where(upper_error_noinf==np.inf,abs(counts_obs_noinf - ymax),upper_error_noinf)
                     ax.errorbar(self.bin_centers[counts_obs_plot != -np.inf], counts_obs_noinf, [lower_error_noinf, upper_error_noinf],fmt='.', c=color_obs, elinewidth=2, markersize=5, capsize=4, label=full_label_obs )
                 else:
                     ax.plot(self.bin_centers[counts_obs_plot != -np.inf], counts_obs_noinf, c=color_obs,linestyle=linestyle_obs,label=full_label_obs,alpha=(1-transparency) )

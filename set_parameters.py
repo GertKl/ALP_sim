@@ -89,6 +89,7 @@ if __name__ == "__main__":
             config_dict[config_argument_name_and_value[0]] = config_dict_item
             
     print("done.")
+    print()
     
     # Defining central paths
     results_dir = config_dict['results_dir']
@@ -112,12 +113,12 @@ if __name__ == "__main__":
         file_control.write(str(key) +" : " + str(config_dict[key])+"\n")
     file_control.close()
     print("Printed configuration variables to "+results_dir + "/" + filename_control)
-    
+    print()
     
     # Saving config variabls to file
     save_variables(config_dict, results_dir+'/'+filename_variables)
     print("Saved all configuration variables to "+results_dir + "/" + filename_variables)
-    
+    print()
     
     
     # Formatting selected physics arguments
@@ -173,9 +174,9 @@ if __name__ == "__main__":
         config_pois_result = subprocess.run(['python', results_dir+'/config_pois.py','-path',results_dir], capture_output = True, text=True)
         print("done.")
         
-        print()
-        print(config_pois_result)
-        print()
+        # print()
+        # print(config_pois_result)
+        # print()
         
         # importing parameter function
         from param_function import param_function

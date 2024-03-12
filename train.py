@@ -18,6 +18,7 @@ import pickle
 import argparse
 import importlib
 import time
+import datetime
 
 import torch
 from pytorch_lightning.loggers import WandbLogger
@@ -45,14 +46,11 @@ class Timer():
         m = int((s-3600*h)/60)
         s = int(s-3600*h-60*m)
         return h, m, s
+ 
+   
 
-
-
-
-if __name__ == "__main__":
-    
-    T = Timer()
-       
+filename_variables = "config_variables.pickle"
+filename_phys = "physics_variables.pickle"
 
 
 if __name__ == "__main__":
@@ -62,13 +60,26 @@ if __name__ == "__main__":
     parser.add_argument("-path", type=str)
     args = parser.parse_args()
     
-    with open(args.path +'/config_variables.pickle', 'rb') as file:
+    # loading config parameters
+    with open(args.path+'/' +filename_variables, 'rb') as file:
+        config_dict = pickle.load(file)
+    for key in config_dict.keys():
+        locals()[key] = config_dict[key]
+        
+    print("Importing ALP_sim... ", end="", flush=True)
+    from ALP_quick_sim import ALP_sim
+    print("done.")
+    
+    # loading physics parameters
+    with open(args.path+'/' +filename_phys, 'rb') as file:
         config_dict = pickle.load(file)
     for key in config_dict.keys():
         locals()[key] = config_dict[key]
     
     
     sim = ALP_SWYFT_Simulator(A, bounds)
+    
+    T = Timer()
     
     
     store = swyft.ZarrStore(args.path + "/sim_output/store/" + store_name)
@@ -95,14 +106,24 @@ if __name__ == "__main__":
     DEVICE = 'cpu' if not gpus else 'cuda'
     
     trainer = swyft.SwyftTrainer(
-        accelerator = DEVICE, precision = 64, logger=wandb_logger #, min_epochs =25, 
+        accelerator = DEVICE, precision = 64, logger=wandb_logger, 
+        enable_progress_bar=not on_cluster, max_epochs=max_epochs, 
     )
     
-    dm = swyft.SwyftDataModule(samples)
+    num_workers = 2 #if not on_cluster else 128
+    dm = swyft.SwyftDataModule(samples, num_workers = num_workers, batch_size=int(train_batch_size_1d), 
+                           on_after_load_sample = sim.get_resampler(targets = ['data']),)
     
+    print()
+    print("Current time and date: " + str(datetime.datetime.now()).split(".")[0])
+    print()
     T.start()
     trainer.fit(network, dm)
+    print()
+    print("Current time and date: " + str(datetime.datetime.now()).split(".")[0])
+    print()
     T.stop("Time spent training")
+    print()
     
     wandb.finish()
     

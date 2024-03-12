@@ -203,6 +203,47 @@ echo
 
 # Make possibility to copy store from somewhere else. (implement in python?)
 
+#if [ $update_config == 0 ] || [ $update_physics == 0 ] ; then	
+echo "Checking for variables defined in previous runs... "
+found_any=0
+for item in "${configuration_files[@]}"
+do	
+	if [ ! -e $results_dir/$item ]; then
+		found=0
+		check_i=$(($i - 1))
+		while [ $found == 0 ] && [ $check_i -gt -1 ] ; do
+			for file_name in $(find ${results_dir}/archive/trial__$check_i -maxdepth 1 -type f )
+			do
+				if [ "${results_dir}/archive/trial__$check_i/${item}" == "$file_name" ]; then
+					found=1
+					break
+				fi
+		    	done
+		    	
+			if [ $found == 1 ]; then 
+				found_any=1
+				mv $file_name ${results_dir}
+				echo "Moved ${item} from run number $(($i - 1))"
+			else
+				check_i=$(($check_i - 1))  
+			fi
+		done
+		if [ $found == 0 ]; then 
+			if [ $update_config == 0 ] && [ $i != 0 ] ; then
+				echo "ERROR: ${item} was not found in previous runs!"
+				echo
+				exit 1
+			fi
+		fi
+	fi		
+done
+if [ $found_any == 0 ] ; then echo "No previously defined variables found." ; fi
+echo
+	
+#fi
+
+
+
 if [ $update_config == 1 ] || [ $update_physics == 1 ] || [ $i == 0 ] ; then
 	
 	echo
@@ -237,38 +278,6 @@ if [ $update_config == 1 ] || [ $update_physics == 1 ] || [ $i == 0 ] ; then
 	#echo done.
 	#echo
 
-elif [ $update_config == 0 ] || [ $update_physics == 0 ] ; then	
-	echo "Checking for variables defined in previous runs... "
-	for item in "${configuration_files[@]}"
-	do	
-		if [ ! -e $results_dir/$item ]; then
-			found=0
-			check_i=$(($i - 1))
-			while [ $found == 0 ] && [ $check_i -gt -1 ] ; do
-				for file_name in $(find ${results_dir}/archive/trial__$check_i -maxdepth 1 -type f )
-				do
-					if [ "${results_dir}/archive/trial__$check_i/${item}" == "$file_name" ]; then
-						found=1
-						break
-					fi
-			    	done
-			    	
-				if [ $found == 1 ]; then 
-					mv $file_name ${results_dir}
-					echo "Moved ${item} from run number $(($i - 1))"
-				else
-					check_i=$(($check_i - 1))  
-				fi
-			done
-			if [ $found == 0 ]; then 
-				echo "ERROR: ${item} was not found in previous runs!"
-				echo
-				exit 1
-			fi
-		fi		
-	done
-	echo
-	
 fi
 
 
