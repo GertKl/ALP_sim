@@ -12,6 +12,7 @@
 ignore_scripts=(\
 ".git" \
 ".gitignore" \
+"network.py" \
 )
 
 configuration_files=(\
@@ -21,16 +22,23 @@ configuration_files=(\
 "param_function.py" \
 )
 
-simulation_files=(\
-".git" \
-".gitignore" \
+stopping_states=(\
+"FAILED" \
+"CANCELLED" \
+"CANCELLED+" \
+"COMPLETED" \
+"TIMEOUT" \
+"PREEMPTED" \
+"NODE_FAIL" \
+"OUT_OF_MEMORY" \
 )
 
-training_files=(\
-".git" \
-".gitignore" \
+running_states=(\
+"PD" \
+"PENDING" \
+"RUNNING" \
+"SUSPENDED" \
 )
-
 
 
 
@@ -197,6 +205,7 @@ echo
 
 
 
+
 #---------------------------------------------------------------------
 #------------ Setting or updating analysis parameters ----------------
 #---------------------------------------------------------------------
@@ -222,8 +231,12 @@ do
 		    	
 			if [ $found == 1 ]; then 
 				found_any=1
-				mv $file_name ${results_dir}
-				echo "Moved ${item} from run number $(($i - 1))"
+				if [ $item == "physics_variables.pickle" ] && [ $save_physics == 0 ] ; then
+					mv $file_name ${results_dir}
+				else
+					cp $file_name ${results_dir}
+					echo "Copied ${item} from run number $(($i - 1))"
+				fi
 			else
 				check_i=$(($check_i - 1))  
 			fi
@@ -239,12 +252,13 @@ do
 done
 if [ $found_any == 0 ] ; then echo "No previously defined variables found." ; fi
 echo
+
 	
 #fi
 
 
 
-if [ $update_config == 1 ] || [ $update_physics == 1 ] || [ $i == 0 ] ; then
+if [ $update_config == 1 ] || [ $i == 0 ] ; then
 	
 	echo
 	echo "Converting and saving new analysis variables"
@@ -301,8 +315,14 @@ if [ $simulate == 1 ] \
 
 fi
 
+double_check_saved_sims=1
 # move old store to most recent existing archive folder. 
 if [ $save_old_sims == 1 ] && [ $i != 0 ] ; then
+	old_store_files=()
+	double_check_saved_sims=0
+	for file_name in $(find $results_dir/sim_output/store) ; do
+		old_store_files+=("$file_name")
+	done
 	if [[ -e ${results_dir}/sim_output/store ]] ; then	
 		
 		#Redundant loop; remove?
@@ -314,7 +334,19 @@ if [ $save_old_sims == 1 ] && [ $i != 0 ] ; then
 		if  [ $check_i > -1 ] && [[ -e ${results_dir}/sim_output/store ]] ; then
 			echo -n "Copying old store to archive/trial__$(($check_i))... "
 			rsync -r ${results_dir}/sim_output/store ${results_dir}/archive/trial__$(($check_i))
-			echo done. 
+			echo done.
+			if [ -e ${results_dir}/archive/trial__$(($check_i))/store ] ; then
+				double_check_saved_sims=1
+				for store_file in ${old_store_files[@]} ; do
+					remove_string=${results_dir}/sim_output/store
+					if [ ! -e ${results_dir}/archive/trial__$(($check_i))/store/${store_file/${remove_string}} ]
+					then
+						double_check_saved_sims=0
+						echo ERROR: File ${results_dir}/archive/trial__$(($check_i))/store/${store_file/${remove_string}} was not copied succesfully from old store!
+						exit 1
+					fi
+				done
+			fi
 		else
 			if [ $check_i < 0 ] ; then
 				echo Error: No archive folders exist for previous runs. 
@@ -339,7 +371,7 @@ if [ -e $use_old_sims ] \
 || { [ $use_old_sims == 0 ] && [ $simulate == 1 ]; } \
 ; then
 	# Delete existing store if it exists
-	if [[ -e ${results_dir}/sim_output/store ]] ; then
+	if [[ -e ${results_dir}/sim_output/store ]] && [ $double_check_saved_sims == 1 ] ; then
 		echo -n "Deleting old store... "
 		rm -r ${results_dir}/sim_output/store
 		echo done.
@@ -375,8 +407,11 @@ if [ $simulate == 1 ] ; then
 	
 	# Run simulate.sh
 	
+	list1_str=$(IFS=, ; echo "${running_states[*]}")
+	list2_str=$(IFS=, ; echo "${stopping_states[*]}")
+	
 	echo "Running simulate.sh... "
-	$results_dir/simulate.sh
+	$results_dir/simulate.sh ${list1_str} ${list2_str}
 	
 	mv $results_dir/sim_output/sim_outputs $results_dir/sim_output/sim_outputs__$i
 
@@ -411,7 +446,13 @@ fi
 
 
 # move old net to most recent existing archive folder. 
+double_check_saved_net=1
 if [ $save_old_net == 1 ] && [ $i != 0 ] ; then
+	old_net_files=()
+	double_check_saved_net=0
+	for file_name in $(find $results_dir/train_output/net) ; do
+		old_net_files+=("$file_name")
+	done
 	if [[ -e ${results_dir}/train_output/net ]] ; then	
 		
 		#Redundant loop; remove?
@@ -421,20 +462,36 @@ if [ $save_old_net == 1 ] && [ $i != 0 ] ; then
 		done
 		
 		if  [ $check_i > -1 ] && [[ -e ${results_dir}/train_output/net ]] ; then
-			echo -n "Copying old store to archive/trial__$(($check_i))... "
+			echo -n "Copying old net to archive/trial__$(($check_i))... "
 			rsync -r ${results_dir}/train_output/net ${results_dir}/archive/trial__$(($check_i))
 			echo done. 
+			if [ -e ${results_dir}/archive/trial__$(($check_i))/net ] ; then
+				double_check_saved_net=1
+				for net_file in ${old_net_files[@]} ; do
+					remove_string=${results_dir}/train_output/net
+					if [ ! -e ${results_dir}/archive/trial__$(($check_i))/net/${net_file/${remove_string}} ]
+					then
+						double_check_saved_net=0
+						echo ERROR: File ${results_dir}/archive/trial__$(($check_i))/net/${net_file/${remove_string}} was not copied succesfully from old net!
+						exit 1
+					fi
+				done
+			fi
 		else
 			if [ $check_i < 0 ] ; then
 				echo Error: No archive folders exist for previous runs. 
 				echo
 				exit 1
 			elif [[ -e ${results_dir}/train_output/net ]] ; then
-				echo No old store found. 
+				echo No old net found. 
 			fi
 		fi	
 	fi	
 fi	
+
+
+
+
 
 # Checking if $use_old_sims is specified appropriately 
 if [ $use_old_net != 1 ]  && [ $use_old_net != 0 ] && [[ ! -e $use_old_net  ]]; then
@@ -448,7 +505,7 @@ if [ -e $use_old_net ] \
 || { [ $use_old_net == 0 ] && [ $train == 1 ]; } \
 ; then
 	# Delete existing store if it exists
-	if [[ -e ${results_dir}/train_output/net ]] ; then
+	if [[ -e ${results_dir}/train_output/net ]] && [ $double_check_saved_net == 1 ]; then
 		echo -n "Deleting old net... "
 		rm -r ${results_dir}/train_output/net
 		echo done.

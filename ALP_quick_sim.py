@@ -157,7 +157,7 @@ class ALP_sim():
         # Intermediate results, not to be changed by user. 
         self.pgg = None
         self.pgg_EBL = None
-        self.pgg_combined = None
+        #self.pgg_combined = None
         self.bin_centers = None
         self.bin_widths = None
         
@@ -548,10 +548,10 @@ class ALP_sim():
                 
                 
         if not pgg_isnone:
-            if len(pgg['y']) == self.nbins:
-                self.pgg = pgg
+            if len(pgg['y']) == self.nbins_etrue:
+                self.pgg = pgg['y']
             else:
-                raise ValueError("Imported survival probabilities should have same length as self.nbins")
+                raise ValueError("Imported survival probabilities should have same length as self.nbins_etrue")
         
         self._residuals = are_residuals
     
@@ -566,20 +566,31 @@ class ALP_sim():
         need_new_null_current = self._need_new_null
         self._need_new_null=False
         
+        pgg_current = self.pgg.copy() if self.pgg else self.pgg
+        pgg_EBL_current = self.pgg_EBL.copy() if self.pgg_EBL else self.pgg_EBL
+        
         if self.with_residuals:
             self.with_residuals=False
             try:
                 self._counts_null = self.simulate(self.null_params)
                 self.with_residuals=True
+                self.pgg=pgg_current
+                self.pgg_EBL=pgg_EBL_current
             except Exception as Err:
                 self.with_residuals=True
                 self._need_new_null = need_new_null_current
+                self.pgg=pgg_current
+                self.pgg_EBL=pgg_EBL_current
                 raise Err
         else:
             try:
                 self._counts_null = self.simulate(self.null_params)
+                self.pgg=pgg_current
+                self.pgg_EBL=pgg_EBL_current
             except Exception as Err:
                 self._need_new_null = need_new_null_current
+                self.pgg=pgg_current
+                self.pgg_EBL=pgg_EBL_current
                 raise Err
         
         print("done.")
@@ -759,7 +770,8 @@ class ALP_sim():
         g = v[1] * 1e-11 * 1/u.GeV
         
         
-        nbins = self.nbins #if self.with_edisp else self.nbins_etrue
+        #nbins = self.nbins if not self.with_edisp else self.nbins_etrue
+        nbins = self.nbins_etrue
         
         
         source     = Source(z = 0.017559, ra = '03h19m48.1s', dec = '+41d30m42s') # this is for ngc1275
@@ -785,29 +797,35 @@ class ALP_sim():
                      )
         modulelist_loc.add_propagation("EBL",1, model = 'dominguez') # EBL attenuation comes second, after beam has left cluster
         modulelist_loc.add_propagation("GMF",2, model = 'jansson12', model_sum = 'ASS') # finally, the beam enters the Milky Way Field
-            
+        
+        
+        emin = 10**( np.log10(self.emin) + 0.5*np.log10(self.emax/self.emin)/(self.nbins_etrue-1) )
+        emax = 10**( np.log10(self.emax) - 0.5*np.log10(self.emax/self.emin)/(self.nbins_etrue-1) )
+        
         enpoints, pgg   = ALP_sim.compute_ALP_absorption(
                         modulelist = modulelist_loc, # modulelist from gammaALP
                         axion_mass = m, # neV
                         coupling   = g , # 10^(-11) /GeV
-                        emin       = self.emin,  # Gev
-                        emax       = self.emax,  # GeVnp.where(errorbars==-np.inf, 0, 
+                        emin       = emin,  # Gev
+                        emax       = emax,  # GeVnp.where(errorbars==-np.inf, 0, 
                         bins       = nbins) # log-bins in enrgy for which computing the ALP-absorption
+        
+        # print("pgg: " + str(pgg))
         
         enpoints, pggEBL   = ALP_sim.compute_ALP_absorption(
                         modulelist = modulelist_loc, # modulelist from gammaALP
                         axion_mass = 0, # neV
                         coupling   = 0 , # 10^(-11) /GeV
-                        emin       = self.emin,  # Gev
-                        emax       = self.emax,  # GeV
+                        emin       = emin,  # Gev
+                        emax       = emax,  # GeV
                         bins       = nbins) # log-bins in enrgy for which computing the ALP-absorption
         
         
-        self.enpoints_pgg = enpoints
+        self.enpoints_pgg = enpoints.copy()
         self.pgg = pgg.copy()
         self.pgg_EBL = pggEBL.copy()
               
-        self.pgg_combined = pgg.copy()
+        #self.pgg_combined = pgg.copy()
         
         
         absorption = TemplateSpectralModel(enpoints*u.Unit("GeV"), pgg, interp_kwargs={"method":"linear"})
@@ -1273,6 +1291,11 @@ class ALP_sim():
             counts_exp_plot = counts_exp_plot['y']
             string4 = "null hypothesis"
 
+        
+
+        if self.with_residuals: string1 = "Residuals of "
+        if self.with_logcounts: string2 = "log of "
+        
 
         if errors:
             errorbars = counts_obs_plot.copy()
@@ -1390,31 +1413,32 @@ class ALP_sim():
                 ax.set_ylabel(string1+string2+string3,size=self.fontsize)
                 ax.set_xlabel('E [GeV]',size=self.fontsize)
                 ax.set_title(label="$\gamma$-ray events from NGC1275", fontsize=self.fontsize)
-                xmin_prev, xmax_prev, ymin_prev, ymax_prev = np.inf, -np.inf, np.inf, -np.inf
+                # xmin_prev, xmax_prev, ymin_prev, ymax_prev = np.inf, -np.inf, np.inf, -np.inf
             else:
-                xmin_prev, xmax_prev = ax.get_xlim()
-                ymin_prev, ymax_prev = ax.get_ylim()
+                pass
+                # xmin_prev, xmax_prev = ax.get_xlim()
+                # ymin_prev, ymax_prev = ax.get_ylim()
         
             if self._logx or (self._logx==None and (abs(xmax/xmin_nonzero) > 100 and not xmin < 0)): 
                 ax.set_xscale("log")
-                xmin = 0.5*xmin_nonzero
+                # xmin = 0.5*xmin_nonzero
             else:
                 ax.set_xscale("linear")
             
             if self._logy or (self._logy==None and (abs(ymax/ymin_nonzero) > 100 and not ymin < 0)): 
                 ax.set_yscale("log")
                 legend_position="upper right"
-                ymin = 0.5*ymin_nonzero
-                ymax = 5*ymax
+                # ymin = 0.5*ymin_nonzero
+                # ymax = 5*ymax
             else:
                 ax.set_yscale("linear")
                 legend_position="upper right"
             
             
-            xmin=min(xmin,xmin_prev)
-            xmax=max(xmax,xmax_prev)
-            ymin=min(ymin,ymin_prev)
-            ymax=max(ymax,ymax_prev)
+            # xmin=min(xmin,xmin_prev)
+            # xmax=max(xmax,xmax_prev)
+            # ymin=min(ymin,ymin_prev)
+            # ymax=max(ymax,ymax_prev)
                          
 
             
@@ -1519,11 +1543,25 @@ class ALP_sim():
                 ax_survival.set_xlabel('E [GeV]',size=15)
                 ax_survival.set_ylim([0.,1.1])
                 ax_survival.set_xscale("log")
-                ax_survival.plot(self.enpoints_pgg, self.pgg_EBL, "-",color="k",
-                         label="intrinsic + EBL")
+                if null:
+                    ax_survival.plot(self.enpoints_pgg, self.pgg_EBL, "-",color="k",
+                             label="intrinsic + EBL")
             
             if xmin: ax_survival.set_xlim(xmin=xmin)
             if xmax: ax_survival.set_xlim(xmax=xmax)
+            
+            if self.xmin: 
+                ax_survival.set_xlim(xmin=self.xmin)
+
+            if self.xmax: 
+                ax_survival.set_xlim(xmax=self.xmax)
+
+            # if self.ymin: 
+            #     ax_survival.set_ylim(ymin=self.ymin)
+
+            # if self.ymax: 
+            #     ax_survival.set_ylim(ymax=self.ymax)
+                
             
             full_label_survival = r"intrinsic + EBL + ALP ["+self.param_names[0]+" = {:.1f} neV,  "+self.param_names[1]+" = {:.1f} $ \times  10^{{-11 }} / \mathrm{{GeV}} $]".format(self.params[0],self.params[1]) if label_survival else None
             

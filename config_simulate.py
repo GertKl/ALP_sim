@@ -70,15 +70,23 @@ if __name__ == "__main__":
     f.write("\n")
     
     if on_cluster:
-        f.write("\n running_states=(\\")
-        for running_state in running_states:
-            f.write("\n \""+running_state+"\" \\")
-        f.write("\n )")
-        f.write("\n")
-        f.write("\n stopping_states=(\\")
-        for stopping_state in stopping_states:
-            f.write("\n \""+stopping_state+"\" \\")
-        f.write("\n )")    
+        f.write("\n IFS=',' read -ra running_states <<< \"$1\"")
+        f.write("\n IFS=',' read -ra stopping_states <<< \"$2\"")
+        # f.write("\n running_states=$1")
+        # f.write("\n stopping_states=$2")
+        # f.write("\n echo $1")
+        # f.write("\n echo $2")
+        # f.write("\n echo $running_states")
+        # f.write("\n echo $stopping_states")
+        # f.write("\n running_states=(\\")
+        # for running_state in running_states:
+        #     f.write("\n \""+running_state+"\" \\")
+        # f.write("\n )")
+        # f.write("\n")
+        # f.write("\n stopping_states=(\\")
+        # for stopping_state in stopping_states:
+        #     f.write("\n \""+stopping_state+"\" \\")
+        # f.write("\n )")    
         f.write("\n")
         f.write("\n job_ids=()")
     
@@ -104,6 +112,7 @@ if __name__ == "__main__":
         f.write("\n \t \t state_str=$( sacct --noheader --format=State --jobs=$job_id )")
         f.write("\n \t \t IFS=' ' read -ra state <<< $state_str")
         f.write("\n \t \t for running_state in \"${running_states[@]}\" ; do")
+        # f.write("\n \t \t \t echo running state: $running_state")
         f.write("\n \t \t \t if [[ $state == $running_state ]] ; then")
         f.write("\n \t \t \t \t continue=1")
         f.write("\n \t \t \t \t break")
@@ -113,6 +122,7 @@ if __name__ == "__main__":
         f.write("\n \t \t if [[ $continue == 0 ]] ; then")
         f.write("\n \t \t \t recognized=0")
         f.write("\n \t \t \t for stopping_state in \"${stopping_states[@]}\" ; do")
+        # f.write("\n \t \t \t \t echo stopping state: $stopping_state")
         f.write("\n \t \t \t \t if [[ $state == $stopping_state ]] ; then")
         f.write("\n \t \t \t \t \t recognized=1")
         f.write("\n \t \t \t \t fi")

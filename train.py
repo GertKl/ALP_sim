@@ -21,6 +21,8 @@ import time
 import datetime
 
 import torch
+torch.set_float32_matmul_precision('medium')
+print('set matmul precision') 
 from pytorch_lightning.loggers import WandbLogger
 import wandb
 
@@ -110,7 +112,7 @@ if __name__ == "__main__":
         enable_progress_bar=not on_cluster, max_epochs=max_epochs, 
     )
     
-    num_workers = 2 #if not on_cluster else 128
+    num_workers = 2 if not on_cluster else 2
     dm = swyft.SwyftDataModule(samples, num_workers = num_workers, batch_size=int(train_batch_size_1d), 
                            on_after_load_sample = sim.get_resampler(targets = ['data']),)
     

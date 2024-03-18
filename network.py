@@ -48,37 +48,87 @@ import pickle
     
     
     
+# class Network(swyft.AdamWReduceLROnPlateau,swyft.SwyftModule):
+#     def __init__(self,nbins, marginals, param_names):
+#         super().__init__()
+        
+#         self.marginals=marginals
+        
+#         self.norm_data = swyft.networks.OnlineStandardizingLayer(torch.Size([nbins]), epsilon=0)
+        
+#         self.learning_rate = 5e-2
     
-class Network(swyft.AdamWReduceLROnPlateau,swyft.SwyftModule):
+#         self.net_data = torch.nn.Sequential(
+#             torch.nn.Flatten(),
+#             torch.nn.LazyLinear(256),
+#             torch.nn.ReLU(),
+#             torch.nn.LazyLinear(256),
+#             torch.nn.ReLU(),
+#             torch.nn.LazyLinear(4)
+#         )
+
+#         self.logratios = swyft.LogRatioEstimator_1dim(
+#             num_features = 4, 
+#             num_params = len(marginals), 
+#             varnames = param_names
+#             )
+         
+#     def forward(self, A, B):
+#         data = self.norm_data(A['data'])
+#         data = self.net_data(data)
+
+#         return self.logratios(data, B['params'][:,self.marginals])
+    
+
+
+
+class Network(swyft.AdamWReduceLROnPlateau, swyft.SwyftModule):
     def __init__(self,nbins, marginals, param_names):
         super().__init__()
         
         self.marginals=marginals
         
-        self.norm_data = swyft.networks.OnlineStandardizingLayer(torch.Size([nbins]), epsilon=0)
-        
+        self.norm = swyft.networks.OnlineStandardizingLayer(torch.Size([nbins]), epsilon=0)
+        self.logratios = swyft.LogRatioEstimator_1dim(
+            num_features = nbins, 
+            num_params = len(marginals), 
+            varnames = list(np.array(param_names)[self.marginals]))
         self.learning_rate = 5e-2
     
-        self.net_data = torch.nn.Sequential(
-            torch.nn.Flatten(),
-            torch.nn.LazyLinear(256),
-            torch.nn.ReLU(),
-            torch.nn.LazyLinear(256),
-            torch.nn.ReLU(),
-            torch.nn.LazyLinear(4)
-        )
-
-        self.logratios = swyft.LogRatioEstimator_1dim(
-            num_features = 4, 
-            num_params = len(marginals), 
-            varnames = param_names
-            )
-         
     def forward(self, A, B):
-        data = self.norm_data(A['data'])
-        data = self.net_data(data)
-
+        data = self.norm(A['data'])
         return self.logratios(data, B['params'][:,self.marginals])
-    
-    
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
     
