@@ -31,6 +31,7 @@ stopping_states=(\
 "PREEMPTED" \
 "NODE_FAIL" \
 "OUT_OF_MEMORY" \
+"OUT_OF_ME+" \
 )
 
 running_states=(\
@@ -210,7 +211,6 @@ echo
 #------------ Setting or updating analysis parameters ----------------
 #---------------------------------------------------------------------
 
-# Make possibility to copy store from somewhere else. (implement in python?)
 
 #if [ $update_config == 0 ] || [ $update_physics == 0 ] ; then	
 echo "Checking for variables defined in previous runs... "

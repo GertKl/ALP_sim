@@ -45,17 +45,23 @@ if __name__ == "__main__":
     
     # time.sleep(60)
     
+    
+    chunk_size = int(n_sim/n_jobs_sim)
+    while chunk_size > 1117:
+        chunk_size = int(chunk_size/2)
+    
+    
     store = swyft.ZarrStore(args.path + "/sim_output/store/" + store_name)
     if len(store) == 0:
         store.init(
         N = n_sim,
-        chunk_size=int(n_sim/n_jobs_sim),
+        chunk_size=chunk_size,
         shapes=sim.get_shapes_and_dtypes()[0],
         dtypes=sim.get_shapes_and_dtypes()[1],
         )
     
     
-    store.simulate(sim, batch_size=int(n_sim/n_jobs_sim))
+    store.simulate(sim, batch_size=chunk_size)
 
 
 
