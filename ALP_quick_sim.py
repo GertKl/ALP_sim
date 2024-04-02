@@ -1385,12 +1385,12 @@ class ALP_sim():
             #TODO: Implement for residuals and logcounts
             counts_exp_plot = counts_exp_plot/self.bin_widths
             counts_obs_plot = counts_obs_plot/self.bin_widths
-            if self.with_residuals: counts_null_plot = self.counts_null/self.bin_widths
+           # if self.with_residuals: counts_null_plot = self.counts_null/self.bin_widths
             ymin = ymin/self.bin_widths
             ymax = ymax/self.bin_widths
             string3 = "dN/dE"
-        else:
-            counts_null_plot=self.counts_null
+        #else:
+            #if self.with_residuals: counts_null_plot=self.counts_null
 
 
 

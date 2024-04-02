@@ -83,21 +83,43 @@ import pickle
 
 
 class Network(swyft.AdamWReduceLROnPlateau, swyft.SwyftModule):
+    
     def __init__(self,nbins, marginals, param_names):
         super().__init__()
         
         self.marginals=marginals
         
         self.norm = swyft.networks.OnlineStandardizingLayer(torch.Size([nbins]), epsilon=0)
+        
         self.logratios = swyft.LogRatioEstimator_1dim(
             num_features = nbins, 
             num_params = len(marginals), 
             varnames = list(np.array(param_names)[self.marginals]))
         self.learning_rate = 5e-2
+        
+        
+        
+        marginals_2d = []
+        for i, el in enumerate(marginals[:-1]):
+            for j in np.arange(i+1,len(marginals)):
+                marginals_2d.append( (el,marginals[j]) )
+        marginals_2d = tuple(marginals_2d)
+        
+        
+        
+        self.logratios2 = swyft.LogRatioEstimator_Ndim(
+            num_features = nbins, 
+            marginals = marginals_2d, 
+            varnames = [[np.array(param_names)[self.marginals][i] for i in marginal] for marginal in marginals_2d ]
+        )
+        
+        
+        
+        
     
     def forward(self, A, B):
         data = self.norm(A['data'])
-        return self.logratios(data, B['params'][:,self.marginals])
+        return self.logratios(data, B['params'][:,self.marginals]), self.logratios2(data, B['params'][:,self.marginals])
         
         
         
