@@ -88,7 +88,8 @@ if __name__ == "__main__":
     if len(store) == 0:
         raise ValueError("Store is empty!")
         
-    samples = store.get_sample_store()
+    all_samples = store.get_sample_store()
+    samples = all_samples[:n_sim_train]
     
     
     print("Store length: " + str(len(samples)))

@@ -391,6 +391,7 @@ if [[ -e "$use_old_sims" ]] ; then
 	echo -n "Importing the store $use_old_sims(.sync)... "
 	rsync -r $use_old_sims ${results_dir}/sim_output/store
 	rsync -r $use_old_sims.sync ${results_dir}/sim_output/store
+	rsync $use_old_sims.lock.file ${results_dir}/sim_output/store
 	echo done.
 	echo
 fi
