@@ -35,8 +35,8 @@ if __name__ == "__main__":
     f.write("\n\n")
 
 
-    
-    if on_cluster:
+
+    if on_cluster in ["fox"]:
         f.write("#SBATCH --job-name=swyft_training")
         f.write("\n")
         f.write("#SBATCH --account="+account)
@@ -47,18 +47,17 @@ if __name__ == "__main__":
         f.write("\n")
         f.write("#SBATCH --mem-per-cpu="+str(max_memory_train)+"G")
         f.write("\n")
-        # f.write("#SBATCH --cpus-per-task=1")
-        f.write("\n")
-        if devel_train:
+        if devel_sim:
             f.write("#SBATCH --qos=devel")
             f.write("\n")
         if gpus:
             f.write("#SBATCH --gpus="+str(gpus))
             f.write("\n")
         f.write("#SBATCH --output="+args.path+"/train_output/train_outputs/slurm-%j.out \\")
-        f.write("\n\n")
-        f.write("\n\n")
-        f.write("\n\n")
+        
+        
+    f.write("\n\n")
+    if on_cluster in ["fox", "hepp"]:
         f.write("set -o errexit  # Exit the script on any error")
         f.write("\n\n")
         f.write("#set -o nounset  # Treat any unset variables as an error")
@@ -69,121 +68,65 @@ if __name__ == "__main__":
         f.write("\n\n")
         f.write("export PS1=\$")
         f.write("\n\n")
-        f.write("module load Miniconda3/22.11.1-1")
+        if on_cluster in ["fox"]:
+            f.write("module load Miniconda3/22.11.1-1")
+        elif on_cluster in ["hepp"]:
+            f.write("module load Miniconda3/4.9.2")  
         f.write("\n\n")
         f.write("source ${EBROOTMINICONDA3}/etc/profile.d/conda.sh")
         f.write("\n\n")
         f.write("conda deactivate &>/dev/null")
         f.write("\n\n")
+        
+    if on_cluster in ["fox"]:
         f.write("conda activate /fp/homes01/u01/ec-gertwk/.conda/envs/"+str(conda_env))
-        f.write("\n\n")
-        f.write("\n\n")
-        if gpus:
-            f.write("\n\n")
-            f.write("export 'PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:24258'")
-            f.write("\n\n")
-            f.write("# Setup monitoring")
-            f.write("\n\n")
-            f.write("nvidia-smi --query-gpu=timestamp,utilization.gpu,utilization.memory --format=csv --loop=1 > \""+results_dir+"/train_output/train_outputs/gpu_util-$SLURM_JOB_ID.csv\" &")
-            f.write("\n\n")
-            f.write("NVIDIA_MONITOR_PID=$!  # Capture PID of monitoring process")
-            f.write("\n\n")
-            f.write("echo")
-            f.write("\n")
-            f.write("echo NVIDIA_MONITOR_PID: $NVIDIA_MONITOR_PID")    
-            f.write("\n")
-            f.write("echo")
-            f.write("\n\n")
-            f.write("echo Date and time before starting train.py: \n")
-            f.write("date")
-            f.write("\n\n")
-            f.write("echo")
-    else:
+    elif on_cluster in ["hepp","local"]:
         f.write("conda activate "+str(conda_env))
-        f.write("\n\n")
-        f.write("\n\n")
+    else:
+        raise ValueError("Cluster \""+on_cluster+"\" not recognized")
+    f.write("\n\n")
         
-        
+    if gpus:
+        f.write("\n\n")
+        f.write("export 'PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:24258'")
+        f.write("\n\n")
+        f.write("# Setup monitoring")
+        f.write("\n\n")
+        f.write("nvidia-smi --query-gpu=timestamp,utilization.gpu,utilization.memory --format=csv --loop=1 > \""+results_dir+"/train_output/train_outputs/gpu_util-$SLURM_JOB_ID.csv\" &")
+        f.write("\n\n")
+        f.write("NVIDIA_MONITOR_PID=$!  # Capture PID of monitoring process")
+        f.write("\n\n")
+        f.write("echo")
+        f.write("\n")
+        f.write("echo NVIDIA_MONITOR_PID: $NVIDIA_MONITOR_PID")    
+        f.write("\n")
+        f.write("echo")
+        f.write("\n\n")
+        f.write("echo Date and time before starting train.py: \n")
+        f.write("date")
+        f.write("\n\n")
+        f.write("echo")
 
     f.write("\n\n")
     
-    # if on_cluster:
-        # f.write("\n running_states=(\\")
-        # for running_state in running_states:
-        #     f.write("\n \""+running_state+"\" \\")
-        # f.write("\n )")
-        # f.write("\n")
-        # f.write("\n stopping_states=(\\")
-        # for stopping_state in stopping_states:
-        #     f.write("\n \""+stopping_state+"\" \\")
-        # f.write("\n )")    
-        # f.write("\n")
-        # f.write("\n job_ids=()")
-    
-    # f.write("\n for ((j=1;j<="+str(1)+";j++)) ; do")
-    if on_cluster:
-        
-        # f.write("\n echo Training in progress. Run squeue -u \" $USER\" to see status.")
+    if on_cluster in ["fox"]:
         f.write("\n python "+results_dir+"/train.py -path "+results_dir)
-        
-        # f.write("\n \t")
-        # f.write("\n \t job_id=$( sbatch \\")
-        # f.write("\n \t --output="+args.path+"/train_output/train_outputs/slurm-%j.out \\")
-        # f.write("\n \t python "+results_dir+"/train.py -path "+results_dir+" \\")
-        # f.write("\n \t | awk '{print $4}')")
-        # f.write("\n \t")
-        # f.write("\n \t job_ids+=(\"$job_id\")")
-        # f.write("\n")
-        # f.write("\n done")
-        
-        # f.write("\n\n")
-        # f.write("\n echo Training in progress. Run squeue -u \" $USER\" to see status. ")
-        # f.write("\n continue=1")
-        # f.write("\n while [[ $continue == 1 ]] ; do")
-        # f.write("\n \t sleep 5")
-        # f.write("\n \t continue=0")
-        # f.write("\n \t for job_id in \"${job_ids[@]}\" ; do")
-        # f.write("\n \t \t state_str=$( sacct --noheader --format=State --jobs=$job_id )")
-        # f.write("\n \t \t IFS=' ' read -ra state <<< $state_str")
-        # f.write("\n \t \t for running_state in \"${running_states[@]}\" ; do")
-        # f.write("\n \t \t \t if [[ $state == $running_state ]] ; then")
-        # f.write("\n \t \t \t \t continue=1")
-        # f.write("\n \t \t \t \t break")
-        # f.write("\n \t \t \t fi")
-        # f.write("\n \t \t done")
-        # f.write("\n\n")
-        # f.write("\n \t \t if [[ $continue == 0 ]] ; then")
-        # f.write("\n \t \t \t recognized=0")
-        # f.write("\n \t \t \t for stopping_state in \"${stopping_states[@]}\" ; do")
-        # f.write("\n \t \t \t \t if [[ $state == $stopping_state ]] ; then")
-        # f.write("\n \t \t \t \t \t recognized=1")
-        # f.write("\n \t \t \t \t fi")
-        # f.write("\n \t \t \t done")
-        # f.write("\n")
-        # f.write("\n \t \t \t if [[ $recognized == 0 ]] ; then")
-        # f.write("\n \t \t \t \t continue=1")
-        # f.write("\n \t \t \t \t echo WARNING: job $job_id is in unrecognized state: $state. \
-        #         Training will not abort by itself while this persists. run \" scancel $job_id \" if \
-        #         you want to abort the process.")
-        # f.write("\n \t \t \t fi")
-        # f.write("\n \t \t fi")
-        # f.write("\n \t done")
-        # f.write("\n done")
-        # f.write("\n echo Finished training!")
-        # f.write("\n\n")
         if gpus:
             f.write("\n")
             f.write("\n# After computation stop monitoring")
             f.write("\n")
             f.write("kill -SIGINT \"$NVIDIA_MONITOR_PID\"")
+            f.write("\n")
     
-    else:
-        f.write(". python "+results_dir+"/train.py -path "+results_dir)
-        f.write("\n")
-        f.write("done")
-        f.write("\n\n")
-        f.write("echo Finished training!")
+    elif on_cluster in ["hepp","local"]:
+        f.write("\n python "+results_dir+"/train.py -path "+results_dir)
         
+    else:
+        raise ValueError("Cluster \""+on_cluster+"\" not recognized")
+
+
+    f.write("\n\n")
+    f.write("echo Finished training!")
     f.write("\n\n")
     f.write("\n\n")
     f.write("\n\n")

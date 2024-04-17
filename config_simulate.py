@@ -38,7 +38,7 @@ if __name__ == "__main__":
     f.write("\n\n")
     f.write("\n\n")
    
-    if on_cluster:
+    if on_cluster in ["fox", "hepp"]:
         f.write("\n\n")
         f.write("set -o errexit  # Exit the script on any error")
         f.write("\n\n")
@@ -50,48 +50,38 @@ if __name__ == "__main__":
         f.write("\n\n")
         f.write("export PS1=\$")
         f.write("\n\n")
-        f.write("module load Miniconda3/22.11.1-1")
+        if on_cluster in ["fox"]:
+            f.write("module load Miniconda3/22.11.1-1")
+        elif on_cluster in ["hepp"]:
+            f.write("module load Miniconda3/4.9.2")  
         f.write("\n\n")
         f.write("source ${EBROOTMINICONDA3}/etc/profile.d/conda.sh")
         f.write("\n\n")
         f.write("conda deactivate &>/dev/null")
         f.write("\n\n")
+        
+    if on_cluster in ["fox"]:
         f.write("conda activate /fp/homes01/u01/ec-gertwk/.conda/envs/"+str(conda_env))
-        f.write("\n\n")
-        f.write("\n\n")
-    else:
+    elif on_cluster in ["hepp","local"]:
         f.write("conda activate "+str(conda_env))
-        f.write("\n\n")
-        f.write("\n\n")
+    else:
+        raise ValueError("Cluster \""+on_cluster+"\" not recognized")
+    f.write("\n\n")
+    f.write("\n\n")
+    
     
     f.write("\n python "+results_dir+"/config_simulate_batch.py -path "+results_dir)
     f.write("\n")
     f.write("\n chmod +x "+results_dir+"/simulate_batch.sh")
     f.write("\n")
     
-    if on_cluster:
+    
+    if on_cluster in ["fox"]:
         f.write("\n IFS=',' read -ra running_states <<< \"$1\"")
-        f.write("\n IFS=',' read -ra stopping_states <<< \"$2\"")
-        # f.write("\n running_states=$1")
-        # f.write("\n stopping_states=$2")
-        # f.write("\n echo $1")
-        # f.write("\n echo $2")
-        # f.write("\n echo $running_states")
-        # f.write("\n echo $stopping_states")
-        # f.write("\n running_states=(\\")
-        # for running_state in running_states:
-        #     f.write("\n \""+running_state+"\" \\")
-        # f.write("\n )")
-        # f.write("\n")
-        # f.write("\n stopping_states=(\\")
-        # for stopping_state in stopping_states:
-        #     f.write("\n \""+stopping_state+"\" \\")
-        # f.write("\n )")    
+        f.write("\n IFS=',' read -ra stopping_states <<< \"$2\"")  
         f.write("\n")
         f.write("\n job_ids=()")
-    
-    f.write("\n for ((j=1;j<="+str(n_jobs_sim)+";j++)) ; do")
-    if on_cluster:
+        f.write("\n for ((j=1;j<="+str(n_jobs_sim)+";j++)) ; do")
         f.write("\n \t")
         f.write("\n \t job_id=$( sbatch \\")
         f.write("\n \t --output="+args.path+"/sim_output/sim_outputs/slurm-%j.out \\")
@@ -142,16 +132,15 @@ if __name__ == "__main__":
         f.write("\n \t \t fi")
         f.write("\n \t done")
         f.write("\n done")
-        f.write("\n echo Finished simulating!")
-        f.write("\n\n")
+
+    elif on_cluster in ["hepp","local"]:
+        f.write("\n . "+results_dir+"/simulate_batch.sh")
     
     else:
-        f.write(". "+results_dir+"/simulate_batch.sh")
-        f.write("\n")
-        f.write("done")
-        f.write("\n\n")
-        f.write("echo done.")
-        
+        raise ValueError("Cluster \""+on_cluster+"\" not recognized")
+    
+    f.write("\n\n")
+    f.write("\n echo Finished simulating!")
     f.write("\n\n")
     f.write("exit")
     

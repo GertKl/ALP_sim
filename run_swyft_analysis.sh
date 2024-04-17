@@ -83,7 +83,7 @@ echo
 #---------------------------------------------------------------------
 
 echo -n "Activating conda environment ${swyft_env}... "
-if [ $on_cluster == 1 ]
+if [[ $on_cluster == fox ]] || [[ $on_cluster == hepp ]]
 then
 
 	#set -o errexit  # Exit the script on any error
@@ -94,18 +94,24 @@ then
 	# Set the ${PS1} (needed in the source of the Anaconda environment)
 	export PS1=\$
 
-	module load Miniconda3/22.11.1-1
+	if [[ $on_cluster == fox ]] ; then	
+		module load Miniconda3/22.11.1-1
+	elif [[ $on_cluster == hepp ]] ; then
+		module load Miniconda3/4.9.2
+	fi
 
 	source ${EBROOTMINICONDA3}/etc/profile.d/conda.sh
 
 	conda deactivate &>/dev/null
+fi
 
+if [[ $on_cluster == fox ]] ; then
 	conda activate /fp/homes01/u01/ec-gertwk/.conda/envs/$swyft_env
-
-	
-else
+elif [[ $on_cluster == fox ]] || [[ $on_cluster == hepp ]] ; then
 	conda activate ${swyft_env}
-
+else
+	echo ERROR: Cluster \"$on_cluster\" not recognized. 
+	exit 1
 fi
 echo  done. 
 echo
@@ -560,7 +566,14 @@ if [ $train == 1 ] ; then
 	
 	# echo "Running train.sh... "
 	echo "Training in progress. Run squeue -u \"$USER\" to see status."
-	sbatch --wait $results_dir/train.sh
+	if [[ $on_cluster == fox ]] ; then
+		sbatch --wait $results_dir/train.sh
+	elif [[ $on_cluster == local ]] || [[ $on_cluster == hepp ]] ; then
+		$results_dir/train.sh
+	else
+		echo ERROR: Cluster \"$on_cluster\" not recognized. 
+		exit 1
+	fi
 	
 	mv $results_dir/train_output/train_outputs $results_dir/train_output/train_outputs__$i
 

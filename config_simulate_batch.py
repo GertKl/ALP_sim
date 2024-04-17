@@ -35,7 +35,7 @@ if __name__ == "__main__":
     f.write("\n\n")
     f.write("\n\n")
     
-    if on_cluster:
+    if on_cluster in ["fox"]:
         f.write("#SBATCH --job-name=ALP_simulations")
         f.write("\n")
         f.write("#SBATCH --account="+account)
@@ -48,7 +48,9 @@ if __name__ == "__main__":
         f.write("\n")
         if devel_sim:
             f.write("#SBATCH --qos=devel")
-            f.write("\n")      
+            f.write("\n")
+            
+    if on_cluster in ["fox", "hepp"]:
         f.write("\n\n")
         f.write("set -o errexit  # Exit the script on any error")
         f.write("\n\n")
@@ -60,20 +62,25 @@ if __name__ == "__main__":
         f.write("\n\n")
         f.write("export PS1=\$")
         f.write("\n\n")
-        f.write("module load Miniconda3/22.11.1-1")
+        if on_cluster in ["fox"]:
+            f.write("module load Miniconda3/22.11.1-1")
+        elif on_cluster in ["hepp"]:
+            f.write("module load Miniconda3/4.9.2")  
         f.write("\n\n")
         f.write("source ${EBROOTMINICONDA3}/etc/profile.d/conda.sh")
         f.write("\n\n")
         f.write("conda deactivate &>/dev/null")
         f.write("\n\n")
+        
+    if on_cluster in ["fox"]:
         f.write("conda activate /fp/homes01/u01/ec-gertwk/.conda/envs/"+str(conda_env))
-        f.write("\n\n")
-        f.write("\n\n")
+    elif on_cluster in ["hepp","local"]:
+        f.write("conda activate "+str(conda_env))
+    else:
+        raise ValueError("Cluster \""+on_cluster+"\" not recognized")
+    f.write("\n\n")
+    f.write("\n\n")
     
-    # else:
-        # f.write("\n\n")
-        # f.write("conda activate "+str(conda_env))
-        # f.write("\n\n")
         
     f.write("python "+args.path+"/simulate_batch.py -path "+args.path)
     
