@@ -3,6 +3,7 @@
 
 
 
+
 #---------------------------------------------------------------------
 #-------------- Some file information for easier  --------------------
 #------------------- adaptation of pipeline --------------------------
@@ -56,6 +57,8 @@ do
 	declare "${config_argument_name_and_value[0]}"="${config_argument_name_and_value[1]// /}"
 done
 echo
+
+
 
 #---------------------------------------------------------------------
 #------------------------- Printing a banner -------------------------
@@ -153,6 +156,9 @@ if [ ! -e ${results_dir}/archive ] ; then mkdir ${results_dir}/archive ; fi
 
 
 
+
+
+
 #---------------------------------------------------------------------
 #------ Copying files to results/$run_name_ext folder and ------------
 #------------- archiving files from earlier trials -------------------
@@ -172,6 +178,10 @@ fi
 echo "this is run number ${i}."
 echo
 
+
+
+
+
 # Putting earlier files into archive folder (if i is greater than 0). 
 
 #if [ $i == 0 ]; then mkdir ${results_dir}/archive/trial__0 ; fi
@@ -182,11 +192,14 @@ then
 
 	for file_name in $(find ${results_dir} -maxdepth 1 -type f )
 	do
-		mv $file_name ${results_dir}/archive/trial__$(($i - 1))			
+
+		mv $file_name ${results_dir}/archive/trial__$(($i - 1))
+	
 	done
 	echo  done.
 	
 fi
+
 
 
 
@@ -209,6 +222,19 @@ do
 done
 echo  done.
 echo
+
+
+
+
+#---------------------------------------------------------------------
+#---------- Redirecting output to stdout and output.log   ------------
+#---------------------------------------------------------------------
+
+
+LOG_FILE=${results_dir}/output.log
+
+exec > >(tee -a "$LOG_FILE") 2>&1
+
 
 
 
@@ -564,9 +590,9 @@ if [ $train == 1 ] ; then
 	
 	# Run simulate.sh
 	
-	# echo "Running train.sh... "
-	echo "Training in progress. Run squeue -u \"$USER\" to see status."
+	echo "Running train.sh... "
 	if [[ $on_cluster == fox ]] ; then
+		echo "Training in progress. Run squeue -u \"$USER\" to see status."
 		sbatch --wait $results_dir/train.sh
 	elif [[ $on_cluster == local ]] || [[ $on_cluster == hepp ]] ; then
 		$results_dir/train.sh
@@ -592,6 +618,8 @@ fi
 echo
 echo Finished analysis. 
 echo
+
+
 
 
 exit

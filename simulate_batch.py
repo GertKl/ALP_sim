@@ -12,9 +12,12 @@ from ALP_quick_sim import ALP_sim
 from alp_swyft_simulator import ALP_SWYFT_Simulator
 import pickle
 import argparse
-from multiprocessing import Process
 import numpy as np
 import time
+import sys
+import os
+import torch
+from multiprocessing import Process
 
 
 class Timer():
@@ -71,10 +74,12 @@ if __name__ == "__main__":
     
     # time.sleep(60)
     
-    
-    chunk_size = int(n_sim/n_jobs_sim)
+    chunk_size = n_sim/n_jobs_sim
+    n_chunks = 1
     while chunk_size > 1117:
-        chunk_size = int(chunk_size/2)
+        chunk_size = chunk_size/2
+        n_chunks *= 2
+    chunk_size = int(np.ceil(chunk_size))
     
     store = swyft.ZarrStore(args.path + "/sim_output/store/" + store_name)
     if len(store) == 0:
@@ -85,28 +90,73 @@ if __name__ == "__main__":
         dtypes=sim.get_shapes_and_dtypes()[1],
         )
     
-     
+    print()
+    print("Running " +str(n_jobs_sim)+ " parallel simulation jobs, with "+str(n_chunks*chunk_size)+" simulations each, split into "+str(n_chunks)+" chunks of "+str(chunk_size)+".")
     
     if on_cluster in ["fox"]:
-        store.simulate(sim, batch_size=chunk_size)
+        store.simulate(sim, batch_size=chunk_size, max_sims=chunk_size*n_chunks)
     
     elif on_cluster in ["hepp", "local"]:
         
+        print("Suppressing progress bar for all but last job.")
+        
+       
         processes = list(np.zeros(n_jobs_sim))
-        run_simulations = lambda sim_obj,batch_size: store.simulate(sim, batch_size=batch_size)
+        
+        def run_simulations(sim_obj,batch_size,n_chunks,print_progress):
+            store.simulate(sim, batch_size=batch_size, max_sims=batch_size*n_chunks,progress_bar=print_progress)
+
         
         T.start()
-        for pi in range(n_jobs_sim):
-            processes[pi] = Process(target=run_simulations,args=(sim,chunk_size))
+        for pi in range(int(n_jobs_sim)):
+            processes[pi] = Process(target=run_simulations,args=(sim,chunk_size,n_chunks,not (n_jobs_sim-pi-1)))
             processes[pi].start()
-            # print("Started "+str(pi+1)+"/"+str(n_jobs_sim)+" jobs.")
+        
         for pi in range(n_jobs_sim):
             processes[pi].join()
-            print("Finished "+str(pi+1)+"/"+str(n_jobs_sim)+" jobs.")
+
         T.stop("Time spent simulating")
-        # print("Length of store: " + str(len(store)))
+        print("Length of store: " + str(len(store)))
+        print("Unfinished simulations: " + str(store.sims_required)) 
     else:
         raise ValueError("Cluster \""+on_cluster+"\" not recognized")
+
+
+
+
+
+
+
+
+        # def run_simulations(sim_obj,batch_size,pi):
+        #     store.simulate(sim, batch_size=batch_size)
+        
+        # for pi in range(n_jobs_sim):
+        #     processes[pi] = Process(target=run_simulations,args=(sim,chunk_size,pi))
+        #     processes[pi].start()
+
+        # for pi in range(n_jobs_sim):
+        #     processes[pi].join()
+            
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

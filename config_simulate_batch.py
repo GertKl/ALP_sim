@@ -81,8 +81,13 @@ if __name__ == "__main__":
     f.write("\n\n")
     f.write("\n\n")
     
+    
+
+    
         
     f.write("python "+args.path+"/simulate_batch.py -path "+args.path)
+    
+
     
     f.write("\n\n")
     f.write("\n\n")

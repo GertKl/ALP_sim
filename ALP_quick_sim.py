@@ -1638,7 +1638,7 @@ class ALP_sim():
             print("Sim values: " + str(sim))
             print()
             print("Parameter values: ")
-            for i, vel in enumerate(params):
+            for i, vel in enumerate(self.full_param_vec(params)):
                 print("v["+str(i)+"]: "+str(vel))
             return {}
             

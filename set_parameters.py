@@ -157,6 +157,8 @@ if __name__ == "__main__":
                 param_names.append(all_param_names[j])
                 param_units.append(all_param_units[j])
                 log_params.append(is_log[j])
+            else:
+                sim_params[j] = val_j if not is_log[j] else 10**val_j
         
         
         config_phys_dict['sim_params'] = sim_params

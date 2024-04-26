@@ -101,8 +101,12 @@ if __name__ == "__main__":
     net = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(net)
     
-
-    network = net.Network(nbins=A.nbins, marginals=POI_indices, param_names=A.param_names)
+    if restricted_posterior == 1 or len(POI_indices) == 1:
+        network = net.Network1D(nbins=A.nbins, marginals=POI_indices, param_names=A.param_names)
+    elif restricted_posterior == 2:
+        network = net.Network2D(nbins=A.nbins, marginals=POI_indices, param_names=A.param_names)
+    else:
+        network = net.NetworkCorner(nbins=A.nbins, marginals=POI_indices, param_names=A.param_names)
     
     wandb_logger = WandbLogger(log_model='all')
     
@@ -116,7 +120,7 @@ if __name__ == "__main__":
     num_workers = 2 if not on_cluster else 2
     dm = swyft.SwyftDataModule(samples, num_workers = num_workers, batch_size=int(train_batch_size_1d), 
                            on_after_load_sample = sim.get_resampler(targets = ['data']),)
-    
+      
     print()
     print("Current time and date: " + str(datetime.datetime.now()).split(".")[0])
     print()
