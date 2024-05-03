@@ -91,7 +91,8 @@ if __name__ == "__main__":
         )
     
     print()
-    print("Running " +str(n_jobs_sim)+ " parallel simulation jobs, with "+str(n_chunks*chunk_size)+" simulations each, split into "+str(n_chunks)+" chunks of "+str(chunk_size)+".")
+    print("Unfinished simulations: " + str(store.sims_required))
+    print("Running " +str(n_jobs_sim)+ " parallel simulation jobs, with "+str(n_chunks*chunk_size)+" simulations each, split into (at most) "+str(n_chunks)+" chunks of "+str(chunk_size)+".")
     
     if on_cluster in ["fox"]:
         store.simulate(sim, batch_size=chunk_size, max_sims=chunk_size*n_chunks)

@@ -110,7 +110,7 @@ fi
 
 if [[ $on_cluster == fox ]] ; then
 	conda activate /fp/homes01/u01/ec-gertwk/.conda/envs/$swyft_env
-elif [[ $on_cluster == fox ]] || [[ $on_cluster == hepp ]] ; then
+elif [[ $on_cluster == local ]] || [[ $on_cluster == hepp ]] ; then
 	conda activate ${swyft_env}
 else
 	echo ERROR: Cluster \"$on_cluster\" not recognized. 
