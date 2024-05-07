@@ -88,7 +88,9 @@ if __name__ == "__main__":
         
     if gpus:
         f.write("\n\n")
-        f.write("export 'PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:24258'")
+        f.write("export 'PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:24258'")   #24258
+        f.write("\n\n")
+        # f.write("ulimit -n 64")
         f.write("\n\n")
         f.write("# Setup monitoring")
         f.write("\n\n")
