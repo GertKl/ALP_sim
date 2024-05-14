@@ -105,7 +105,7 @@ if __name__ == "__main__":
         processes = list(np.zeros(n_jobs_sim))
         
         def run_simulations(sim_obj,batch_size,n_chunks,print_progress):
-            store.simulate(sim, batch_size=batch_size, max_sims=batch_size*n_chunks,progress_bar=print_progress)
+            store.simulate(sim, batch_size=batch_size, max_sims=batch_size*n_chunks,progress_bar=print_progress)#,targets=['params','exp'])
 
         
         T.start()

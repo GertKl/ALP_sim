@@ -107,6 +107,25 @@ if __name__ == "__main__":
         store_name = 'store'
     config_dict['store_name'] = store_name
     
+    # Formatting hyperparameters
+    hyperparams = ",".join(config_dict['hyperparams']).split('--')[1:]
+    hyperparams_dict = {}
+    for hyperparam in hyperparams:
+        hyperparam_list = hyperparam.split(':')
+        hyperparam_info = hyperparam_list[0].split("(")
+        hyperparam_name = hyperparam_info[0]
+        # print(hyperparam_info)
+        hyperparam_type = hyperparam_info[1].split(")")[0]
+        hyperparam_vals = np.array(hyperparam_list[1].split(","))
+        if not hyperparam_type == "":
+            if len(hyperparam_vals)>1:
+                hyperparam_vals = hyperparam_vals.astype(hyperparam_type)
+            else:
+                hyperparam_vals = [getattr(__builtins__, hyperparam_type)(hyperparam_vals)]
+        hyperparams_dict[hyperparam_name] = hyperparam_vals
+    config_dict['hyperparams'] = hyperparams_dict
+    
+    
     # Printing variables to file for double-checking 
     file_control = open(results_dir + "/" + filename_control, "w")
     for key in config_dict.keys():    

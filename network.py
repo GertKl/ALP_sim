@@ -84,10 +84,14 @@ import pickle
 
 class Network(swyft.AdamWReduceLROnPlateau, swyft.SwyftModule):
     
-    def __init__(self,nbins, marginals, param_names, features=64, blocks=2, lr=5e-2, stopping_patience=5, dropout=0):
+    def __init__(self,nbins, marginals, param_names, batch_size=32, features=64, blocks=2, lr=5e-2, stopping_patience=5, dropout=0):
         super().__init__()
         
         self.marginals=marginals
+        
+        self.learning_rate = lr
+        
+        self.early_stopping_patience=stopping_patience
         
         self.norm = swyft.networks.OnlineStandardizingLayer(torch.Size([nbins]), epsilon=0)
         
@@ -97,16 +101,15 @@ class Network(swyft.AdamWReduceLROnPlateau, swyft.SwyftModule):
             num_blocks=blocks,
             dropout=dropout,
             num_params = len(marginals), 
-            varnames = list(np.array(param_names)[self.marginals]))
+            varnames = list(np.array(param_names)[self.marginals])
+        )
         
-        self.learning_rate = lr
-        
-        self.early_stopping_patience=stopping_patience
         
         
     
     def head_net(self, data):
         data = self.norm(data)
+        # print("############################### " + str(data.shape))
         return data
     
     # def forward(self, A, B):
