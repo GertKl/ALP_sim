@@ -35,8 +35,6 @@ class Network(swyft.AdamWReduceLROnPlateau, swyft.SwyftModule):#, supernet.Netwo
             globals()[key] = kwargs[key]
 
 
-
-
         self.logratio_features = logratio_features
         
         self.norm_data = swyft.networks.OnlineStandardizingLayer(torch.Size([nbins]), epsilon=0)
