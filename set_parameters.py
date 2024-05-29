@@ -107,14 +107,17 @@ if __name__ == "__main__":
         store_name = 'store'
     config_dict['store_name'] = store_name
     
+
     # Formatting hyperparameters
-    hyperparams = ",".join(config_dict['hyperparams']).split('--')[1:]
+    if not isinstance(config_dict['hyperparams'],str):
+        hyperparams = ",".join(config_dict['hyperparams']).split('--')[1:]
+    else:
+        hyperparams = config_dict['hyperparams'].split('--')[1:]
     hyperparams_dict = {}
     for hyperparam in hyperparams:
         hyperparam_list = hyperparam.split(':')
         hyperparam_info = hyperparam_list[0].split("(")
         hyperparam_name = hyperparam_info[0]
-        # print(hyperparam_info)
         hyperparam_type = hyperparam_info[1].split(")")[0]
         hyperparam_vals = np.array(hyperparam_list[1].split(","))
         if not hyperparam_type == "":
