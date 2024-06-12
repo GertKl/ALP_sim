@@ -63,8 +63,29 @@ from gammaALPs.base import environs, transfer
 
 # from differential_counts import DifferentialCounts
 
+# import time
+# class Timer():
+    
+#     def __init__(self):
+#         self.start_time = None
+#         self.stop_time = None
+    
+#     def start(self):
+#         self.start_time = time.time()
+        
+#     def stop(self,what="Elapsed time"):
+#         self.stop_time = time.time()
+#         h,m,s = Timer.process_time(self.stop_time-self.start_time)
+#         print(what + ": "+str(h)+" h, "+str(m)+" min, "+str(s)+" sec.")
+    
+#     @staticmethod
+#     def process_time(s):
+#         h = int(s/3600)
+#         m = int((s-3600*h)/60)
+#         s = s-3600*h-60*m
+#         return h, m, s
 
- 
+# T = Timer()
     
     
 class ALP_sim():
@@ -156,7 +177,7 @@ class ALP_sim():
         
         # Intermediate results, not to be changed by user. 
         self.pgg = None
-        self.pgg_EBL = None
+        self.pgg_null = None
         #self.pgg_combined = None
         self.bin_centers = None
         self.bin_widths = None
@@ -567,30 +588,32 @@ class ALP_sim():
         self._need_new_null=False
         
         pgg_current = self.pgg.copy() if self.pgg else self.pgg
-        pgg_EBL_current = self.pgg_EBL.copy() if self.pgg_EBL else self.pgg_EBL
+        pgg_null_current = self.pgg_null.copy() if self.pgg_null else self.pgg_null
         
         if self.with_residuals:
             self.with_residuals=False
             try:
                 self._counts_null = self.simulate(self.null_params)
+                self.pgg_null = self.pgg.copy()
                 self.with_residuals=True
                 self.pgg=pgg_current
-                self.pgg_EBL=pgg_EBL_current
+                self.pgg_null=pgg_null_current
             except Exception as Err:
                 self.with_residuals=True
                 self._need_new_null = need_new_null_current
                 self.pgg=pgg_current
-                self.pgg_EBL=pgg_EBL_current
+                self.pgg_null=pgg_null_current
                 raise Err
         else:
             try:
                 self._counts_null = self.simulate(self.null_params)
+                self.pgg_null = self.pgg.copy()
                 self.pgg=pgg_current
-                self.pgg_EBL=pgg_EBL_current
+                self.pgg_null=pgg_null_current
             except Exception as Err:
                 self._need_new_null = need_new_null_current
                 self.pgg=pgg_current
-                self.pgg_EBL=pgg_EBL_current
+                self.pgg_null=pgg_null_current
                 raise Err
         
         print("done.")
@@ -755,6 +778,9 @@ class ALP_sim():
                                 i.e. {'y': histogram}  
         '''
         
+        
+        # T.start()
+        
         logging.disable(logging.WARNING)
         
         mask = np.array(self.log_params) == 1
@@ -799,6 +825,8 @@ class ALP_sim():
         modulelist_loc.add_propagation("GMF",2, model = 'jansson12', model_sum = 'ASS') # finally, the beam enters the Milky Way Field
         
         
+        # T.stop("yeah")
+        
         emin = 10**( np.log10(self.emin) + 0.5*np.log10(self.emax/self.emin)/(self.nbins_etrue-1) )
         emax = 10**( np.log10(self.emax) - 0.5*np.log10(self.emax/self.emin)/(self.nbins_etrue-1) )
         
@@ -812,21 +840,25 @@ class ALP_sim():
         
         # print("pgg: " + str(pgg))
         
-        enpoints, pggEBL   = ALP_sim.compute_ALP_absorption(
-                        modulelist = modulelist_loc, # modulelist from gammaALP
-                        axion_mass = 0, # neV
-                        coupling   = 0 , # 10^(-11) /GeV
-                        emin       = emin,  # Gev
-                        emax       = emax,  # GeV
-                        bins       = nbins) # log-bins in enrgy for which computing the ALP-absorption
+        # T.stop("yepp")
+        
+        # enpoints, pggEBL   = ALP_sim.compute_ALP_absorption(
+        #                 modulelist = modulelist_loc, # modulelist from gammaALP
+        #                 axion_mass = 0, # neV
+        #                 coupling   = 0 , # 10^(-11) /GeV
+        #                 emin       = emin,  # Gev
+        #                 emax       = emax,  # GeV
+        #                 bins       = nbins) # log-bins in enrgy for which computing the ALP-absorption
         
         
         self.enpoints_pgg = enpoints.copy()
         self.pgg = pgg.copy()
-        self.pgg_EBL = pggEBL.copy()
+        # self.pgg_EBL = pggEBL.copy()
               
         #self.pgg_combined = pgg.copy()
         
+        
+        # T.stop("yo")
         
         absorption = TemplateSpectralModel(enpoints*u.Unit("GeV"), pgg, interp_kwargs={"method":"linear"})
         
@@ -899,6 +931,7 @@ class ALP_sim():
         # out = dict(y=np.array(counts))
         
         np.random.seed()
+     
      
         return out
     
@@ -1544,7 +1577,7 @@ class ALP_sim():
                 ax_survival.set_ylim([0.,1.1])
                 ax_survival.set_xscale("log")
                 if null:
-                    ax_survival.plot(self.enpoints_pgg, self.pgg_EBL, "-",color="k",
+                    ax_survival.plot(self.enpoints_pgg, self.pgg_null, "-",color="k",
                              label="intrinsic + EBL")
             
             if xmin: ax_survival.set_xlim(xmin=xmin)
@@ -1600,7 +1633,8 @@ class ALP_sim():
         Output:
             -  out              Observations with noise. 
         ''' 
-
+        
+        
         try:
             d = sim['y'].astype(np.float64)
             
@@ -1643,6 +1677,7 @@ class ALP_sim():
             return {}
             
             raise e
+        
         
         return dict(y=d)
     
@@ -1858,7 +1893,7 @@ class ALP_sim():
         modulelist.alp.g = coupling
         modulelist.EGeV  = ebins
 
-        px,  py,  pa     = modulelist.run(multiprocess=2)
+        px,  py,  pa     = modulelist.run(multiprocess=1)
         pgg              = px + py
 
         return modulelist.EGeV, pgg[0]

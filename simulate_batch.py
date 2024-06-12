@@ -17,7 +17,8 @@ import time
 import sys
 import os
 import torch
-from multiprocessing import Process
+from multiprocessing import Process, Pool
+import copy
 
 
 class Timer():
@@ -81,7 +82,8 @@ if __name__ == "__main__":
         n_chunks *= 2
     chunk_size = int(np.ceil(chunk_size))
     
-    store = swyft.ZarrStore(args.path + "/sim_output/store/" + store_name)
+    store_path = args.path + "/sim_output/store/" + store_name
+    store = swyft.ZarrStore(store_path)
     if len(store) == 0:
         store.init(
         N = n_sim,
@@ -89,6 +91,15 @@ if __name__ == "__main__":
         shapes=sim.get_shapes_and_dtypes()[0],
         dtypes=sim.get_shapes_and_dtypes()[1],
         )
+    
+    # store2 = swyft.ZarrStore(args.path + "/sim_output/store2/" + store_name)
+    # if len(store2) == 0:
+    #     store2.init(
+    #     N = n_sim,
+    #     chunk_size=chunk_size,
+    #     shapes=sim.get_shapes_and_dtypes()[0],
+    #     dtypes=sim.get_shapes_and_dtypes()[1],
+    #     )
     
     print()
     print("Unfinished simulations: " + str(store.sims_required))
@@ -104,17 +115,39 @@ if __name__ == "__main__":
        
         processes = list(np.zeros(n_jobs_sim))
         
-        def run_simulations(sim_obj,batch_size,n_chunks,print_progress):
-            store.simulate(sim, batch_size=batch_size, max_sims=batch_size*n_chunks,progress_bar=print_progress)#,targets=['params','exp'])
+        def run_simulations(store_path, sim_obj,batch_size,n_chunks,print_progress):
+            sim_obj_loc = copy.deepcopy(sim_obj)
+            # store_obj = swyft.ZarrStore(args.path + "/sim_output/store/" + store_name)
+            store_obj = swyft.ZarrStore(store_path)  
+            store_obj.simulate(sim_obj_loc, batch_size=batch_size, max_sims=batch_size*n_chunks,progress_bar=print_progress)
 
         
         T.start()
         for pi in range(int(n_jobs_sim)):
-            processes[pi] = Process(target=run_simulations,args=(sim,chunk_size,n_chunks,not (n_jobs_sim-pi-1)))
+            sim_obj = copy.deepcopy(sim)
+            processes[pi] = Process(target=run_simulations,args=(store_path,sim_obj,chunk_size,n_chunks,not int(n_jobs_sim-pi-1)))
             processes[pi].start()
+        
+        # for pi in range(int(n_jobs_sim/2)):
+        #     sim_obj = copy.deepcopy(sim)
+        #     processes[int(n_jobs_sim/2)+pi] = Process(target=run_simulations,args=(args.path + "/sim_output/store2/" + store_name,sim_obj,chunk_size,n_chunks,not int(n_jobs_sim/2-pi-1)))
+        #     processes[int(n_jobs_sim/2)+pi].start()
         
         for pi in range(n_jobs_sim):
             processes[pi].join()
+            
+        
+        # iterable = list(np.zeros(n_jobs_sim))
+        # iterable[-1] = (copy.deepcopy(sim),chunk_size,n_chunks,1)
+        # for itbl in range(len(iterable)-1):
+        #     iterable[itbl] = (copy.deepcopy(sim),chunk_size,n_chunks,0)
+        
+        # with Pool(n_jobs_sim) as pool:
+        #     try: 
+        #         pool.starmap(run_simulations, iterable)
+        #     except Exception as err:
+        #         pool.terminate()
+        #         print(err)      
 
         T.stop("Time spent simulating")
         print("Length of store: " + str(len(store)))

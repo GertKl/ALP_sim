@@ -135,6 +135,24 @@ if __name__ == "__main__":
 
     elif on_cluster in ["hepp","local"]:
         f.write("\n . "+results_dir+"/simulate_batch.sh")
+        
+        
+        
+        # f.write("\n")
+        # f.write("\n job_ids=()")
+        # f.write("\n for ((j=1;j<="+str(int(n_jobs_sim))+";j++)) ; do")
+        # f.write("\n \t")
+        # # f.write("\n \t echo yaaaaay")
+        # f.write("\n \t")
+        # f.write("\n \t . "+results_dir+"/simulate_batch.sh &")
+        # f.write("\n \t")
+        # f.write("\n")
+        # f.write("\n done")
+        # f.write("\n")
+        # f.write("\n wait")
+        
+        
+        
     
     else:
         raise ValueError("Cluster \""+on_cluster+"\" not recognized")
