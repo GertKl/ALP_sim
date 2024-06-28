@@ -82,7 +82,7 @@ if __name__ == "__main__":
         n_chunks *= 2
     chunk_size = int(np.ceil(chunk_size))
     
-    store_path = args.path + "/sim_output/store/" + store_name
+    store_path = args.path + "/sim_output/store/" + store_name + "_round_" + str(which_truncation)
     store = swyft.ZarrStore(store_path)
     if len(store) == 0:
         store.init(

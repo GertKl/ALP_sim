@@ -91,6 +91,8 @@ if __name__ == "__main__":
     print("done.")
     print()
     
+    # config_dict['which_truncation'] = 0
+    
     # Defining central paths
     results_dir = config_dict['results_dir']
     scripts_dir = config_dict['scripts_dir']
