@@ -20,6 +20,7 @@ import importlib
 import time
 import datetime
 import itertools
+from pytorch_lightning.callbacks import LearningRateMonitor
 
 import torch
 torch.set_float32_matmul_precision('medium')
@@ -55,6 +56,7 @@ class Timer():
 
 filename_variables = "config_variables.pickle"
 filename_phys = "physics_variables.pickle"
+filename_true_obs = "true_obs.pickle"
 
 
 if __name__ == "__main__":
@@ -76,12 +78,18 @@ if __name__ == "__main__":
     
     # loading physics parameters
     with open(args.path+'/' +filename_phys, 'rb') as file:
-        config_dict = pickle.load(file)
-    for key in config_dict.keys():
-        locals()[key] = config_dict[key]
+        config_phys_dict = pickle.load(file)
+    for key in config_phys_dict.keys():
+        locals()[key] = config_phys_dict[key]
+        
+    # loading mock true observation
+    with open(args.path+'/' +filename_true_obs, 'rb') as file:
+        true_obs_dict = pickle.load(file)
+    for key in true_obs_dict.keys():
+        locals()[key] = true_obs_dict[key]
     
     
-    sim = ALP_SWYFT_Simulator(A, bounds)
+    sim = ALP_SWYFT_Simulator(A, bounds_rounds[-1])
     
     T = Timer()
     
@@ -158,7 +166,7 @@ if __name__ == "__main__":
             dms[train_batch_size] = swyft.SwyftDataModule(samples, num_workers = num_workers, batch_size=int(train_batch_size), 
                                    on_after_load_sample = sim.get_resampler(targets = ['data','power']),)
         
-          6
+        
         print()
         print("Current time and date: " + str(datetime.datetime.now()).split(".")[0])
         print()
@@ -186,27 +194,35 @@ if __name__ == "__main__":
             print("Network state dict saved as "+results_dir+"/train_output/net/trained_network"+"_round_"+str(which_truncation)+"_gridpoint_"+str(count)+".pt")
         except Exception as Err2:
             print(Err2)
+        print()
             
-            
-        
+        # lr_monitor = LearningRateMonitor(logging_interval='step')
+        # trainer = swyft.SwyftTrainer(
+        #     accelerator = DEVICE, precision = 64,
+        #     callbacks = [lr_monitor], log_every_n_steps=10,
+        #     )
 
-            
-        prior_samples = sim.sample(10_000, targets = ['params'])
-            
-        predictions_rounds.append[trainer.infer(network, true_obs, prior_samples)]
+        # Truncating priors based on temporary posterior
+        print("Truncating... \n", end="", flush=True)
+        prior_samples = sim.sample(N = 10_000, targets = ['params'], progress_bar = False)
+        logratios_round = trainer.infer(network, true_obs, prior_samples)
+        logratios_rounds.append(logratios_round)
+
+        bounds_truncated = swyft.lightning.bounds.get_rect_bounds(logratios_rounds[-1][0], threshold=1e-6).bounds[:,0,:]
+        bounds_round = bounds
+        for bi in range(len(bounds_truncated)):
+            bounds_round[POI_indices[bi]] = bounds_truncated[bi]
+        bounds_rounds.append(np.array(bounds_round))
+
+        config_phys_dict['logratios_rounds'] = logratios_rounds
+        config_phys_dict['bounds_rounds'] = bounds_rounds
+        with open(results_dir+'/'+filename_phys,'wb') as file:
+            pickle.dump(config_phys_dict, file)
+        print("...done truncating.")
         
-        new_bounds = bounds_rounds[-1].copy()
-        
-        for pi in POI_indices:
-        
-            new_bounds[pi] = swyft.collect_rect_bounds(predictions_rounds[-1], A.param_names[pi], )
-        
-        bounds_rounds.append()
-            
-        
-        
-        
-        
+        # adapt grid testing
+        # Make it possible to use a different number of simulations per round?
+        # include true_obs in observations
         
         
         

@@ -16,6 +16,8 @@ import pickle
 import subprocess
 import importlib
 from types import ModuleType
+import swyft
+from alp_swyft_simulator import ALP_SWYFT_Simulator
 
 
 def save_variables(variables: dict, path: str) -> None:  
@@ -30,6 +32,7 @@ def save_variables(variables: dict, path: str) -> None:
 filename_variables = "config_variables.pickle"
 filename_phys = "physics_variables.pickle"
 filename_control = "check_variables.txt"
+filename_true_obs = "true_obs.pickle"
 
 
 if __name__ == "__main__":
@@ -91,8 +94,7 @@ if __name__ == "__main__":
     print("done.")
     print()
     
-    # config_dict['which_truncation'] = 0
-    
+   
     # Defining central paths
     results_dir = config_dict['results_dir']
     scripts_dir = config_dict['scripts_dir']
@@ -129,6 +131,7 @@ if __name__ == "__main__":
                 hyperparam_vals = [getattr(__builtins__, hyperparam_type)(hyperparam_vals)]
         hyperparams_dict[hyperparam_name] = hyperparam_vals
     config_dict['hyperparams'] = hyperparams_dict
+    
     
     
     # Printing variables to file for double-checking 
@@ -191,7 +194,11 @@ if __name__ == "__main__":
         config_phys_dict['param_units'] = param_units
         config_phys_dict['log_params'] = log_params
         config_phys_dict['bounds'] = bounds
-    
+        
+        # Initializing rounds-specific variables
+        config_phys_dict['bounds_rounds'] = [bounds]
+        config_phys_dict['logratios_rounds'] = []
+            
         # Saving variables so far, in order to be able to write parametr-extension function.
         save_variables(config_phys_dict,results_dir+'/'+filename_phys)
     
@@ -245,12 +252,12 @@ if __name__ == "__main__":
         
         A.generate_null()
         print()
+        
     
         # Making sure POI_indices (marginals) is a list. 
         POI_indices=config_dict['POI_indices']
         if isinstance(POI_indices,int): POI_indices = [POI_indices]
     
-        
         
         # Writing remaining physics variables to config_phys_dict, and deleting coresponding
         # variablses from config_dict to avoid confusion. 
@@ -276,10 +283,18 @@ if __name__ == "__main__":
         print()
     
     
+        
+        # Simulating the mock true observation, on which to base truncation
+        bounds_for_true_obs = [[obs_param,obs_param] for obs_param in obs_params] 
+        sim_for_true_obs = ALP_SWYFT_Simulator(A, bounds_for_true_obs)
+        true_obs = sim_for_true_obs.sample()
+        true_obs_dict = dict(true_obs=true_obs)
 
 
-
-    
+        # Saving mock true observation to file
+        save_variables(true_obs_dict, results_dir+'/'+filename_true_obs)
+        print("Saved mock true observation to "+filename_true_obs)
+        print()
 
     
 

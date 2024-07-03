@@ -71,7 +71,7 @@ if __name__ == "__main__":
         locals()[key] = config_dict[key]
     
     
-    sim = ALP_SWYFT_Simulator(A, bounds)
+    sim = ALP_SWYFT_Simulator(A, bounds_rounds[-1])
     
     # time.sleep(60)
     
