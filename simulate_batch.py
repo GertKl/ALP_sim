@@ -14,11 +14,10 @@ import pickle
 import argparse
 import numpy as np
 import time
-import sys
 import os
-import torch
-from multiprocessing import Process, Pool
+from multiprocessing import Process
 import copy
+import shutil
 
 
 class Timer():
@@ -45,6 +44,7 @@ class Timer():
 
 filename_variables = "config_variables.pickle"
 filename_phys = "physics_variables.pickle"
+filename_truncation_record = "truncation_record.pickle"
 
 T = Timer()
 
@@ -69,24 +69,54 @@ if __name__ == "__main__":
         config_dict = pickle.load(file)
     for key in config_dict.keys():
         locals()[key] = config_dict[key]
+        
+    # loading information on previous truncations
+    with open(args.path+'/' +filename_truncation_record, 'rb') as file:
+        truncation_dict = pickle.load(file)
+    for key in truncation_dict.keys():
+        locals()[key] = truncation_dict[key]
     
     
-    sim = ALP_SWYFT_Simulator(A, bounds_rounds[-1])
+    sim = ALP_SWYFT_Simulator(A, bounds_rounds[which_grid_point][-1])
     
     # time.sleep(60)
     
-    chunk_size = n_sim/n_jobs_sim
+    if isinstance(n_sim_train,int):
+        n_sim_round = copy.copy(n_sim_train)
+    else:
+        n_sim_round = copy.copy(n_sim_train[min(which_truncation,len(n_sim_train)-1)])
+    
+    if which_truncation == n_truncations:
+        n_sim_round += n_sim_coverage
+        
+    
+    
+    
+    chunk_size = n_sim_round/n_jobs_sim
     n_chunks = 1
     while chunk_size > 1117:
         chunk_size = chunk_size/2
         n_chunks *= 2
     chunk_size = int(np.ceil(chunk_size))
     
-    store_path = args.path + "/sim_output/store/" + store_name + "_round_" + str(which_truncation)
+    
+    if which_truncation > 0:
+        grid_point_str = "_gridpoint_"+str(which_grid_point)
+        truncation_round_str = "_round_" + str(which_truncation)
+        store_path = args.path + "/sim_output/store/" + store_name + truncation_round_str + grid_point_str
+        if os.path.exists(store_path) and not use_old_truncations:
+            shutil.rmtree(store_path)
+    else:
+        store_path = args.path + "/sim_output/store/" + store_name
+    
+    # grid_point_str = "_gridpoint_"+str(which_grid_point) if which_truncation > 0 else ""
+    # truncation_round_str = "_round_" + str(which_truncation) if which_truncation > 0 else ""
+    # store_path = args.path + "/sim_output/store/" + store_name + truncation_round_str + grid_point_str
+    
     store = swyft.ZarrStore(store_path)
     if len(store) == 0:
         store.init(
-        N = n_sim,
+        N = n_sim_round,
         chunk_size=chunk_size,
         shapes=sim.get_shapes_and_dtypes()[0],
         dtypes=sim.get_shapes_and_dtypes()[1],

@@ -9,8 +9,6 @@ Created on Mon Feb  5 14:41:58 2024
 
 
 import swyft
-import os
-import sys
 import numpy as np
 from ALP_quick_sim import ALP_sim
 from alp_swyft_simulator import ALP_SWYFT_Simulator
@@ -20,7 +18,7 @@ import importlib
 import time
 import datetime
 import itertools
-from pytorch_lightning.callbacks import LearningRateMonitor
+import copy
 
 import torch
 torch.set_float32_matmul_precision('medium')
@@ -57,6 +55,7 @@ class Timer():
 filename_variables = "config_variables.pickle"
 filename_phys = "physics_variables.pickle"
 filename_true_obs = "true_obs.pickle"
+filename_truncation_record = "truncation_record.pickle"
 
 
 if __name__ == "__main__":
@@ -81,6 +80,12 @@ if __name__ == "__main__":
         config_phys_dict = pickle.load(file)
     for key in config_phys_dict.keys():
         locals()[key] = config_phys_dict[key]
+    
+    # loading information on previous truncations
+    with open(args.path+'/' +filename_truncation_record, 'rb') as file:
+        truncation_dict = pickle.load(file)
+    for key in truncation_dict.keys():
+        locals()[key] = truncation_dict[key]
         
     # loading mock true observation
     with open(args.path+'/' +filename_true_obs, 'rb') as file:
@@ -89,143 +94,134 @@ if __name__ == "__main__":
         locals()[key] = true_obs_dict[key]
     
     
-    sim = ALP_SWYFT_Simulator(A, bounds_rounds[-1])
+    sim = ALP_SWYFT_Simulator(A, bounds_rounds[-1][-1])
+    
+    if isinstance(n_sim_train,int):
+        n_sim_round = copy.copy(n_sim_train)
+    else:
+        n_sim_round = copy.copy(n_sim_train[min(which_truncation,len(n_sim_train)-1)])
+    
+    if which_truncation == n_truncations:
+        n_sim_round += n_sim_coverage
+    
     
     T = Timer()
     
-    
-    store = swyft.ZarrStore(args.path + "/sim_output/store/" + store_name + "_round_" + str(which_truncation))
+    grid_point_str = "_gridpoint_"+str(which_grid_point) if which_truncation > 0 else ""
+    truncation_round_str = "_round_" + str(which_truncation) if which_truncation > 0 else ""
+    store_path = args.path + "/sim_output/store/" + store_name + truncation_round_str + grid_point_str
+    store = swyft.ZarrStore(store_path)
     if len(store) == 0:
         raise ValueError("Store is empty!")
         
     all_samples = store.get_sample_store()
-    samples = all_samples[:n_sim_train]
+    samples = all_samples[:n_sim_round]
     
     
     print("Store length: " + str(len(samples)))
-    print("Infs in store: " + str(np.where(np.isinf(samples['data']))))
-    print("nans in store: " + str(np.where(np.isinf(samples['data']))))
-    
+
     module_name = 'architecture'
     spec = importlib.util.spec_from_file_location(module_name, results_dir+"/train_output/net/network.py")
     net = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(net)
     
-    
-    
-    count = 0
-    dms = {}
-                                
+    count = -1
     for combo in itertools.product(*hyperparams.values()):
+        count +=1
+        if count == which_grid_point:
+            hyperparams_point = {}
+            for i, key in enumerate(hyperparams.keys()):
+                hyperparams_point[key]=combo[i]
+            break
+        
 
-        count = count+1
-        
-        if count in range(start_grid_test_at_count): continue
-        
-        hyperparams_point = {}
-        
+    if restricted_posterior == 1 or len(POI_indices) == 1:
+        network = net.Network1D(nbins=A.nbins, marginals=POI_indices, param_names=A.param_names)
+    elif restricted_posterior == 2:
+        network = net.Network2D(nbins=A.nbins, marginals=POI_indices, param_names=A.param_names)
+    else:
+        network = net.NetworkCorner(A.nbins, POI_indices, A.param_names, **hyperparams_point)
+
+    
+    wandb_logger = WandbLogger(log_model='all')
+    
+    DEVICE = 'cpu' if not gpus else 'cuda'
+    
+    trainer = swyft.SwyftTrainer(
+        accelerator = DEVICE, precision = 64, logger=wandb_logger, 
+        enable_progress_bar=not on_cluster, max_epochs=max_epochs, 
+        log_every_n_steps=50,
+    )
+    
+    num_workers = 4 if on_cluster in ["hepp"] and gpus else 2
+    
+
+    dm = swyft.SwyftDataModule(samples, num_workers = num_workers, batch_size=int(train_batch_size_1d), 
+                           on_after_load_sample = sim.get_resampler(targets = ['data','power']),)
+    
+    
+    print()
+    print("Current time and date: " + str(datetime.datetime.now()).split(".")[0])
+    print()
+    
+    T.start()
+    
+    try:
+        trainer.fit(network, dm)
+    except Exception as Err:
         print()
-        print()
-        print("Model number")
-        print(count)
-        for i, key in enumerate(hyperparams.keys()):
-            hyperparams_point[key]=combo[i]
-            print(key)
-            print(combo[i])
-            
+        print("*******TRAINING FAILED*********")
+        print(Err)
+    
+    print()
+    print("Current time and date: " + str(datetime.datetime.now()).split(".")[0])
+    print()
+    T.stop("Time spent training")
+    print()
+    
+    wandb.finish()
+                            
+    
+    try:
+        torch.save(network.state_dict(), results_dir+"/train_output/net/trained_network"+"_round_"+str(which_truncation)+"_gridpoint_"+str(count)+".pt")
+        print("Network state dict saved as "+results_dir+"/train_output/net/trained_network"+"_round_"+str(which_truncation)+"_gridpoint_"+str(count)+".pt")
+    except Exception as Err2:
+        print(Err2)
+    print()
         
-        train_batch_size = train_batch_size_1d #if n_features==64 else int(train_batch_size_1d/4)
-        
-        print("train_batch_size")
-        print(train_batch_size)
 
 
-        kernel = 4
+    # Truncating priors based on temporary posterior
+    print("Truncating... \n", end="", flush=True)
+    prior_samples = sim.sample(N = 10_000, targets = ['params'], progress_bar = False)
+    logratios_round = trainer.infer(network, true_obs, prior_samples)
+    # print(len(logratios_rounds[which_grid_point]))
+    logratios_rounds[which_grid_point].append(logratios_round)
+    # print(len(logratios_rounds[which_grid_point]))
+    # print(logratios_round)
 
-        if restricted_posterior == 1 or len(POI_indices) == 1:
-            network = net.Network1D(nbins=A.nbins, marginals=POI_indices, param_names=A.param_names)
-        elif restricted_posterior == 2:
-            network = net.Network2D(nbins=A.nbins, marginals=POI_indices, param_names=A.param_names)
-        else:
-            network = net.NetworkCorner(A.nbins, POI_indices, A.param_names, **hyperparams_point)
+    bounds_truncated = swyft.lightning.bounds.get_rect_bounds(logratios_rounds[which_grid_point][-1][0], threshold=1e-6).bounds[:,0,:]
+    bounds_round = np.array(bounds).copy()
+    for bi in range(len(bounds_truncated)):
+        bounds_round[POI_indices[bi]] = np.array(bounds_truncated[bi])
+    bounds_rounds[which_grid_point].append(np.array(bounds_round))
+    # print(bounds_rounds)
 
-        
-        wandb_logger = WandbLogger(log_model='all')
-        
-        DEVICE = 'cpu' if not gpus else 'cuda'
-        
-        trainer = swyft.SwyftTrainer(
-            accelerator = DEVICE, precision = 64, logger=wandb_logger, 
-            enable_progress_bar=not on_cluster, max_epochs=max_epochs, 
-            log_every_n_steps=50,
-        )
-        
-        num_workers = 4 if on_cluster in ["hepp"] and gpus else 2
-        
-        if not train_batch_size in dms.keys():
-            dms[train_batch_size] = swyft.SwyftDataModule(samples, num_workers = num_workers, batch_size=int(train_batch_size), 
-                                   on_after_load_sample = sim.get_resampler(targets = ['data','power']),)
-        
-        
-        print()
-        print("Current time and date: " + str(datetime.datetime.now()).split(".")[0])
-        print()
-        
-        T.start()
-        
-        try:
-            trainer.fit(network, dms[train_batch_size])
-        except Exception as Err:
-            print()
-            print("*******TRAINING FAILED*********")
-            print(Err)
-        
-        print()
-        print("Current time and date: " + str(datetime.datetime.now()).split(".")[0])
-        print()
-        T.stop("Time spent training")
-        print()
-        
-        wandb.finish()
-                                
-        
-        try:
-            torch.save(network.state_dict(), results_dir+"/train_output/net/trained_network"+"_round_"+str(which_truncation)+"_gridpoint_"+str(count)+".pt")
-            print("Network state dict saved as "+results_dir+"/train_output/net/trained_network"+"_round_"+str(which_truncation)+"_gridpoint_"+str(count)+".pt")
-        except Exception as Err2:
-            print(Err2)
-        print()
-            
-        # lr_monitor = LearningRateMonitor(logging_interval='step')
-        # trainer = swyft.SwyftTrainer(
-        #     accelerator = DEVICE, precision = 64,
-        #     callbacks = [lr_monitor], log_every_n_steps=10,
-        #     )
+    truncation_dict['logratios_rounds'] = logratios_rounds
+    truncation_dict['bounds_rounds'] = bounds_rounds
+    # print('yoop')
+    # print(len(truncation_dict['logratios_rounds'][which_grid_point]))
+    with open(results_dir+'/'+filename_truncation_record,'wb') as file:
+        pickle.dump(truncation_dict, file)
+    print("...done truncating.")
+    print()
+    
 
-        # Truncating priors based on temporary posterior
-        print("Truncating... \n", end="", flush=True)
-        prior_samples = sim.sample(N = 10_000, targets = ['params'], progress_bar = False)
-        logratios_round = trainer.infer(network, true_obs, prior_samples)
-        logratios_rounds.append(logratios_round)
+    # Make truncation variabes independent of configuration variables. Make truncation continue automatically. 
+    # include true_obs in observations
 
-        bounds_truncated = swyft.lightning.bounds.get_rect_bounds(logratios_rounds[-1][0], threshold=1e-6).bounds[:,0,:]
-        bounds_round = bounds
-        for bi in range(len(bounds_truncated)):
-            bounds_round[POI_indices[bi]] = bounds_truncated[bi]
-        bounds_rounds.append(np.array(bounds_round))
-
-        config_phys_dict['logratios_rounds'] = logratios_rounds
-        config_phys_dict['bounds_rounds'] = bounds_rounds
-        with open(results_dir+'/'+filename_phys,'wb') as file:
-            pickle.dump(config_phys_dict, file)
-        print("...done truncating.")
-        
-        # adapt grid testing
-        # Make it possible to use a different number of simulations per round?
-        # include true_obs in observations
-        
-        
-        
+    
+    # Make variable overwrite truncation. If 0, record is copied back. If 1, stores are deleted. 
         
         
         

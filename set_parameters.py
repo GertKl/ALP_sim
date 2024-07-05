@@ -195,9 +195,7 @@ if __name__ == "__main__":
         config_phys_dict['log_params'] = log_params
         config_phys_dict['bounds'] = bounds
         
-        # Initializing rounds-specific variables
-        config_phys_dict['bounds_rounds'] = [bounds]
-        config_phys_dict['logratios_rounds'] = []
+
             
         # Saving variables so far, in order to be able to write parametr-extension function.
         save_variables(config_phys_dict,results_dir+'/'+filename_phys)
