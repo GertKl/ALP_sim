@@ -193,7 +193,7 @@ if __name__ == "__main__":
 
     # Truncating priors based on temporary posterior
     print("Truncating... \n", end="", flush=True)
-    prior_samples = sim.sample(N = 10_000, targets = ['params'], progress_bar = False)
+    prior_samples = sim.sample(N = 400_000, targets = ['params'], progress_bar = False)
     logratios_round = trainer.infer(network, true_obs, prior_samples)
     # print(len(logratios_rounds[which_grid_point]))
     logratios_rounds[which_grid_point].append(logratios_round)
@@ -213,7 +213,12 @@ if __name__ == "__main__":
     # print(len(truncation_dict['logratios_rounds'][which_grid_point]))
     with open(results_dir+'/'+filename_truncation_record,'wb') as file:
         pickle.dump(truncation_dict, file)
-    print("...done truncating.")
+    print("Done truncating.")
+    print("Parameter space reductions:")
+    print()
+    for poi in POI_indices:
+        reduction = 1-(bounds_rounds[which_grid_point][-1][poi][1]-bounds_rounds[which_grid_point][-1][poi][0])/(bounds_rounds[which_grid_point][-2][poi][1]-bounds_rounds[which_grid_point][-2][poi][0])
+        print("  "+A.param_names[poi]+f":{reduction*100: .0f}% ")
     print()
     
 

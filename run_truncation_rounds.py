@@ -82,10 +82,7 @@ if __name__ == "__main__":
             print("train_batch_size: "+str(train_batch_size_1d),flush=True)
             print()
 
-        
-        # print(os.path.exists(results_dir+'/'+filename_truncation_record), flush=True)
-        # print(results_dir+'/'+filename_truncation_record, flush=True)
-
+    
 
         # Intervening to prevent re-truncating the original store for every grid point. 
         if os.path.exists(results_dir+'/'+filename_truncation_record):
@@ -93,22 +90,12 @@ if __name__ == "__main__":
             with open(args.path+'/' +filename_truncation_record, 'rb') as file:
                 truncation_dict = pickle.load(file)
             
-            # print(truncation_dict, flush =True)
-            # print()
-            # print()
-            # print(truncation_dict["bounds_rounds"], flush=True)
-                
-            # Adding a grid point slolt in the record, if not already in place
-        
+
+        # Adding a grid point slolt in the record, if not already in place
         if len(truncation_dict['logratios_rounds']) < which_grid_point+1:  
             truncation_dict['bounds_rounds'].append([bounds,truncation_dict['bounds_rounds'][0][1]])
             truncation_dict['logratios_rounds'].append([truncation_dict['logratios_rounds'][0][0]])
             
-        # print('wut')
-        # print('Grid point', flush=True)    
-        # print(which_grid_point, flush=True)
-        print('wt', flush=True)    
-        print(len(truncation_dict["logratios_rounds"][which_grid_point]), flush=True)
 
         which_truncation = len( truncation_dict["logratios_rounds"][which_grid_point] )-1
         
@@ -120,11 +107,7 @@ if __name__ == "__main__":
         for i in range(which_truncation, n_truncations):
             
             which_truncation+=1
-    
-            # if which_truncation == 0 and os.path.exists(results_dir+'/'+filename_truncation_record): 
-                
-            #     continue
-            
+          
             truncation_dict['which_truncation'] = which_truncation
             
             with open(results_dir+'/'+filename_truncation_record,'wb') as file:
@@ -139,8 +122,7 @@ if __name__ == "__main__":
         
         
             truncated_anything = True  
-            
-            
+                  
         
         if not truncated_anything: print("Nothing to do \n" )
     

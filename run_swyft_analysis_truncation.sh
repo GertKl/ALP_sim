@@ -22,6 +22,7 @@ configuration_files=(\
 "check_variables.txt" \
 "param_function.py" \
 "truncation_record.pickle" \
+"true_obs.pickle" \
 )
 
 stopping_states=(\

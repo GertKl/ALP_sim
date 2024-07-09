@@ -128,9 +128,6 @@ if __name__ == "__main__":
 
 
     f.write("\n\n")
-    f.write("echo Finished training!")
-    f.write("\n\n")
-    f.write("\n\n")
     f.write("\n\n")
     f.write("exit")
     
