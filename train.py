@@ -94,15 +94,15 @@ if __name__ == "__main__":
         locals()[key] = true_obs_dict[key]
     
     
-    sim = ALP_SWYFT_Simulator(A, bounds_rounds[-1][-1])
+    sim = ALP_SWYFT_Simulator(A, bounds_rounds[-1][-1], prior_funcs)
     
     if isinstance(n_sim_train,int):
         n_sim_round = copy.copy(n_sim_train)
     else:
         n_sim_round = copy.copy(n_sim_train[min(which_truncation,len(n_sim_train)-1)])
     
-    if which_truncation == n_truncations:
-        n_sim_round += n_sim_coverage
+    # if which_truncation == n_truncations:
+    #     n_sim_round += n_sim_coverage
     
     
     T = Timer()
@@ -214,11 +214,12 @@ if __name__ == "__main__":
     with open(results_dir+'/'+filename_truncation_record,'wb') as file:
         pickle.dump(truncation_dict, file)
     print("Done truncating.")
-    print("Parameter space reductions:")
+    print("Parameter space reductions compared to previous round (to original bounds):")
     print()
     for poi in POI_indices:
         reduction = 1-(bounds_rounds[which_grid_point][-1][poi][1]-bounds_rounds[which_grid_point][-1][poi][0])/(bounds_rounds[which_grid_point][-2][poi][1]-bounds_rounds[which_grid_point][-2][poi][0])
-        print("  "+A.param_names[poi]+f":{reduction*100: .0f}% ")
+        reduction_orig = 1-(bounds_rounds[which_grid_point][-1][poi][1]-bounds_rounds[which_grid_point][-1][poi][0])/(bounds_rounds[which_grid_point][0][poi][1]-bounds_rounds[which_grid_point][0][poi][0])
+        print("  "+A.param_names[poi]+f":{reduction*100: .0f}% ({reduction_orig*100: .0f}% ) ")
     print()
     
 

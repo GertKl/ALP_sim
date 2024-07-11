@@ -18,6 +18,8 @@ import importlib
 from types import ModuleType
 import swyft
 from alp_swyft_simulator import ALP_SWYFT_Simulator
+import random
+import scipy.stats as sps
 
 
 def save_variables(variables: dict, path: str) -> None:  
@@ -153,8 +155,13 @@ if __name__ == "__main__":
     if config_dict['update_physics']: 
         config_phys_dict = {}
         
+        print(config_dict['model_params'])
+        
         # Formatting model parameter information. 
-        model_params = np.array(config_dict['model_params'])
+        model_params = np.array( [ innerel.split('|') for innerel in ','.join( ['|'.join(el) if isinstance(el,list) else el for el in config_dict['model_params']] ).split('+') ]  )
+        
+        print(model_params)
+        
         sim_params = list(model_params[:,0])
         bounds = []
         
@@ -169,14 +176,17 @@ if __name__ == "__main__":
         obs_params_full = list(model_params[:,1].astype(float))
         null_params_full = list(model_params[:,2].astype(float))
         is_log = list(model_params[:,3].astype(int))
-        all_param_names = list(model_params[:,4].astype(str))
-        all_param_units = list(model_params[:,5].astype(str))
+        all_prior_funcs = list(model_params[:,4].astype(str))
+        all_param_names = list(model_params[:,5].astype(str))
+        all_param_units = list(model_params[:,6].astype(str))
         
         obs_params = []
         null_params = []
         param_names = []
         param_units = []
         log_params = []
+        prior_funcs = []
+        
         for j, val_j in enumerate(sim_params):
             if isinstance(val_j,list):
                 obs_params.append(obs_params_full[j])
@@ -184,9 +194,10 @@ if __name__ == "__main__":
                 param_names.append(all_param_names[j])
                 param_units.append(all_param_units[j])
                 log_params.append(is_log[j])
+                prior_funcs.append(all_prior_funcs[j])
             else:
                 sim_params[j] = val_j if not is_log[j] else 10**val_j
-        
+
         
         config_phys_dict['sim_params'] = sim_params
         config_phys_dict['obs_params'] = obs_params
@@ -194,6 +205,7 @@ if __name__ == "__main__":
         config_phys_dict['param_units'] = param_units
         config_phys_dict['log_params'] = log_params
         config_phys_dict['bounds'] = bounds
+        config_phys_dict['prior_funcs'] = prior_funcs
         
 
             

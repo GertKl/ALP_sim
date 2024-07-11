@@ -18,6 +18,7 @@ import os
 from multiprocessing import Process
 import copy
 import shutil
+import random
 
 
 class Timer():
@@ -77,17 +78,17 @@ if __name__ == "__main__":
         locals()[key] = truncation_dict[key]
     
     
-    sim = ALP_SWYFT_Simulator(A, bounds_rounds[which_grid_point][-1])
+    sim = ALP_SWYFT_Simulator(A, bounds_rounds[which_grid_point][-1], prior_funcs)
     
     # time.sleep(60)
     
     if isinstance(n_sim_train,int):
-        n_sim_round = copy.copy(n_sim_train)
+        n_sim_round = copy.copy(n_sim_train)+n_sim_coverage
     else:
-        n_sim_round = copy.copy(n_sim_train[min(which_truncation,len(n_sim_train)-1)])
+        n_sim_round = copy.copy(n_sim_train[min(which_truncation,len(n_sim_train)-1)])+n_sim_coverage
     
-    if which_truncation == n_truncations:
-        n_sim_round += n_sim_coverage
+    # if which_truncation == n_truncations:
+    #     n_sim_round += n_sim_coverage
         
     
     
@@ -136,6 +137,8 @@ if __name__ == "__main__":
     print("Running " +str(n_jobs_sim)+ " parallel simulation jobs, with "+str(n_chunks*chunk_size)+" simulations each, split into (at most) "+str(n_chunks)+" chunks of "+str(chunk_size)+".")
     
     if on_cluster in ["fox"]:
+        np.random.seed(None)
+        random.seed(None)
         store.simulate(sim, batch_size=chunk_size, max_sims=chunk_size*n_chunks)
     
     elif on_cluster in ["hepp", "local"]:
@@ -146,6 +149,8 @@ if __name__ == "__main__":
         processes = list(np.zeros(n_jobs_sim))
         
         def run_simulations(store_path, sim_obj,batch_size,n_chunks,print_progress):
+            np.random.seed(None)
+            random.seed(None)
             sim_obj_loc = copy.deepcopy(sim_obj)
             # store_obj = swyft.ZarrStore(args.path + "/sim_output/store/" + store_name)
             store_obj = swyft.ZarrStore(store_path)  
