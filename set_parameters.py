@@ -155,12 +155,12 @@ if __name__ == "__main__":
     if config_dict['update_physics']: 
         config_phys_dict = {}
         
-        print(config_dict['model_params'])
+        # print(config_dict['model_params'])
         
         # Formatting model parameter information. 
         model_params = np.array( [ innerel.split('|') for innerel in ','.join( ['|'.join(el) if isinstance(el,list) else el for el in config_dict['model_params']] ).split('+') ]  )
         
-        print(model_params)
+        # print(model_params)
         
         sim_params = list(model_params[:,0])
         bounds = []
