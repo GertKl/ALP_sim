@@ -39,28 +39,17 @@ class ALP_SWYFT_Simulator(swyft.Simulator):
                     distr_params = None
                     
                 if which_distr == 'U':
-                    # self.prior_funcs.append(random.uniform)
-                    func = lambda a,b : scist.uniform.rvs(loc=a, scale =b-a)
-                    self.prior_funcs.append( func ) 
+                    self.prior_funcs.append( lambda a,b : scist.uniform.rvs(loc=a, scale =b-a) ) 
                 elif info[0] == 'N':
                     mu = distr_params[0]
                     std = distr_params[1]
-                    func = lambda a,b : scist.truncnorm.rvs( (a-mu)/std, (b-mu)/std, loc=mu, scale=std,size=1)[0]
-                    self.prior_funcs.append( func ) 
+                    self.prior_funcs.append( lambda a,b,mu=mu,std=std : scist.truncnorm.rvs( (a-mu)/std, (b-mu)/std, loc=mu, scale=std,size=1)[0] ) 
                 else:
-                    raise ValueError('Invalid prior distribution specified! Can be U(), or N(x,y)')
+                    raise ValueError('Invalid prior distribution specified! Can be U(), or N(mean,std)')
             
-            
-            
-        
         self.len_fft = len_fft
         self.len_fts = int(max_freq*((np.log10(self.A.emax)-np.log10(self.A.emin))/self.A.nbins)*len_fft)
 
-        # self.samplers = []
-        # for i,bound in enumerate(bounds):
-        #     self.samplers.append(scist.uniform(loc=bound[0], scale=bound[1]-bound[0]))
-
-        #random.seed()
         
     def sample_prior(self,):
         #np.random.seed(random.randint(0,2**32-1))
@@ -84,10 +73,6 @@ class ALP_SWYFT_Simulator(swyft.Simulator):
         return power.astype(np.float32)
 
 
-    # def simulate_store_parallel(self, n_sims_per_cpu):
-    #     return store.simulate(self, max_sims=n_sims_per_cpu, batch_size=chunk_size)
-
-    # def simulate
 
     def build(self, graph):
         params = graph.node('params', self.sample_prior)

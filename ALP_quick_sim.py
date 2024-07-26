@@ -143,6 +143,7 @@ class ALP_sim():
         self.with_residuals = False
         self.nB = 1
         self.ALP_seed = None
+        self.noise_seed = None
         self._floor = None
         self._floor_obs = None
         self._loc = 0
@@ -188,7 +189,7 @@ class ALP_sim():
                                         #  Updated in self.generate_null(), self.configure_model() and self.configure_obs().          
         self._residuals=None            # Whether saved simulations are counts or residuals. 
                                         #  Updated in self.subtract_null(), self.import_counts() and self.compute_case().           
-                                        
+        
         
         if set_obs: self.set_obs()
         if set_null: 
@@ -311,7 +312,8 @@ class ALP_sim():
                         loc: float="__empty__",
                         sigma: float="__empty__",
                         nB: Union[int,None]="__empty__",
-                        ALP_seed="__empty__", 
+                        ALP_seed="__empty__",
+                        noise_seed="__empty__", 
                         new_null=True
                         ) -> None:
         ''' 
@@ -351,7 +353,9 @@ class ALP_sim():
             -  sigma:               Standard deviation of gaussian noise. 
             -  nB:                  [Redundant] Number of B-field realizations to compute
             -  ALP_seed:            Seed for random B-field realizations. Set to other than None for 
-                                    reproduction of same realization (?).
+                                    reproduction of identical realizations.
+            -  noise_seed:          Seed for statistical fluctuations Set to other than None for 
+                                    reproduction of identical fluctuations.
             -  new_null:            Unless set to false, using configure_model() will update 
                                     the null-hypothesis (self.counts_null) next time a simulation is
                                     generated in residual mode (activated using 
@@ -445,6 +449,9 @@ class ALP_sim():
                 model_changed = True
             if ALP_seed != "__empty__" and ALP_seed != self.ALP_seed: #TODO: standardize ALP_seed when using None for null-hypothesis?
                 self.ALP_seed = ALP_seed
+                # model_changed = True
+            if noise_seed != "__empty__" and noise_seed != self.noise_seed: 
+                self.noise_seed = noise_seed
                 # model_changed = True
             
         if model_changed and new_null:
@@ -587,8 +594,8 @@ class ALP_sim():
         need_new_null_current = self._need_new_null
         self._need_new_null=False
         
-        pgg_current = self.pgg.copy() if self.pgg else self.pgg
-        pgg_null_current = self.pgg_null.copy() if self.pgg_null else self.pgg_null
+        pgg_current = self.pgg.copy() if np.any(self.pgg) else self.pgg
+        pgg_null_current = self.pgg_null.copy() if np.any(self.pgg_null) else self.pgg_null
         
         if self.with_residuals:
             self.with_residuals=False
@@ -799,6 +806,7 @@ class ALP_sim():
         #nbins = self.nbins if not self.with_edisp else self.nbins_etrue
         nbins = self.nbins_etrue
         
+        np_random_state = np.random.get_state()
         
         source     = Source(z = 0.017559, ra = '03h19m48.1s', dec = '+41d30m42s') # this is for ngc1275
         pin        = np.diag((1.,1.,0.)) * 0.5
@@ -824,8 +832,8 @@ class ALP_sim():
         modulelist_loc.add_propagation("EBL",1, model = 'dominguez') # EBL attenuation comes second, after beam has left cluster
         modulelist_loc.add_propagation("GMF",2, model = 'jansson12', model_sum = 'ASS') # finally, the beam enters the Milky Way Field
         
+        np.random.set_state(np_random_state)
         
-        # T.stop("yeah")
         
         emin = 10**( np.log10(self.emin) + 0.5*np.log10(self.emax/self.emin)/(self.nbins_etrue-1) )
         emax = 10**( np.log10(self.emax) - 0.5*np.log10(self.emax/self.emin)/(self.nbins_etrue-1) )
@@ -838,27 +846,10 @@ class ALP_sim():
                         emax       = emax,  # GeVnp.where(errorbars==-np.inf, 0, 
                         bins       = nbins) # log-bins in enrgy for which computing the ALP-absorption
         
-        # print("pgg: " + str(pgg))
-        
-        # T.stop("yepp")
-        
-        # enpoints, pggEBL   = ALP_sim.compute_ALP_absorption(
-        #                 modulelist = modulelist_loc, # modulelist from gammaALP
-        #                 axion_mass = 0, # neV
-        #                 coupling   = 0 , # 10^(-11) /GeV
-        #                 emin       = emin,  # Gev
-        #                 emax       = emax,  # GeV
-        #                 bins       = nbins) # log-bins in enrgy for which computing the ALP-absorption
-        
-        
+
         self.enpoints_pgg = enpoints.copy()
         self.pgg = pgg.copy()
-        # self.pgg_EBL = pggEBL.copy()
-              
-        #self.pgg_combined = pgg.copy()
-        
-        
-        # T.stop("yo")
+
         
         absorption = TemplateSpectralModel(enpoints*u.Unit("GeV"), pgg, interp_kwargs={"method":"linear"})
         
@@ -918,20 +909,7 @@ class ALP_sim():
         
         out = self.convert_counts(counts)
         
-        
-        # if self.with_logcounts:
-        #     with np.errstate(divide='ignore', invalid='ignore'):
-        #         counts = np.where(counts==0,-np.inf,np.log10(counts))
-
-        # if self.with_residuals: 
-        #     if self._need_new_null:
-        #         self.generate_null()
-        #     counts = self.subtract_null(counts)['y']
- 
-        # out = dict(y=np.array(counts))
-        
-        np.random.seed()
-     
+    
      
         return out
     
@@ -1634,6 +1612,8 @@ class ALP_sim():
             -  out              Observations with noise. 
         ''' 
         
+        np_random_state = np.random.get_state()
+        np.random.seed(self.noise_seed)
         
         try:
             d = sim['y'].astype(np.float64)
@@ -1674,10 +1654,14 @@ class ALP_sim():
             print("Parameter values: ")
             for i, vel in enumerate(self.full_param_vec(params)):
                 print("v["+str(i)+"]: "+str(vel))
+            
+            np.random.set_state(np_random_state)
+            
             return {}
             
             raise e
         
+        np.random.set_state(np_random_state)
         
         return dict(y=d)
     
@@ -1698,6 +1682,9 @@ class ALP_sim():
         Output:
             -  out              Observations with noise. 
         ''' 
+
+        np_random_state = np.random.get_state()
+        np.random.seed(self.noise_seed)
 
         try:
             d = sim['y'].astype(np.float64)
@@ -1738,9 +1725,14 @@ class ALP_sim():
             print("Parameter values: ")
             for i, vel in enumerate(params):
                 print("v["+str(i)+"]: "+str(vel))
+            
+            np.random.set_state(np_random_state)
+            
             return {}
             
             raise e
+        
+        np.random.set_state(np_random_state)
         
         return dict(y=d)
     

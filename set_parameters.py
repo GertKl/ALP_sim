@@ -295,10 +295,12 @@ if __name__ == "__main__":
     
         
         # Simulating the mock true observation, on which to base truncation
+        print("Simulating mock observation... ", end='', flush=True)
         bounds_for_true_obs = [[obs_param,obs_param] for obs_param in obs_params] 
         sim_for_true_obs = ALP_SWYFT_Simulator(A, bounds_for_true_obs)
         true_obs = sim_for_true_obs.sample(1, progress_bar=False)[0]
         true_obs_dict = dict(true_obs=true_obs)
+        print("done.")
 
 
         # Saving mock true observation to file
