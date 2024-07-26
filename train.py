@@ -25,6 +25,7 @@ torch.set_float32_matmul_precision('medium')
 torch.multiprocessing.set_sharing_strategy('file_system')
 print('set matmul precision') 
 from pytorch_lightning.loggers import WandbLogger
+from pytorch_lightning.callbacks import TQDMProgressBar
 import wandb
 
 
@@ -56,6 +57,7 @@ filename_variables = "config_variables.pickle"
 filename_phys = "physics_variables.pickle"
 filename_true_obs = "true_obs.pickle"
 filename_truncation_record = "truncation_record.pickle"
+filename_explim_predictions = "explim_predictions.pickle"
 
 
 if __name__ == "__main__":
@@ -113,7 +115,6 @@ if __name__ == "__main__":
     store = swyft.ZarrStore(store_path)
     if len(store) == 0:
         raise ValueError("Store is empty!")
-        
     all_samples = store.get_sample_store()
     samples = all_samples[:n_sim_round]
     
@@ -193,13 +194,15 @@ if __name__ == "__main__":
 
     # Truncating priors based on temporary posterior
     print("Truncating... \n", end="", flush=True)
-    prior_samples = sim.sample(N = 400_000, targets = ['params'], progress_bar = False)
+    store_prior_path = args.path + "/sim_output/store/" + store_name + "_prior" + truncation_round_str + grid_point_str
+    store_prior = swyft.ZarrStore(store_prior_path)
+    if len(store_prior) == 0:
+        raise ValueError("Prior store is empty!")
+    prior_samples = store_prior.get_sample_store()
+    
     logratios_round = trainer.infer(network, true_obs, prior_samples)
-    # print(len(logratios_rounds[which_grid_point]))
     logratios_rounds[which_grid_point].append(logratios_round)
-    # print(len(logratios_rounds[which_grid_point]))
-    # print(logratios_round)
-
+    
     bounds_truncated = swyft.lightning.bounds.get_rect_bounds(logratios_rounds[which_grid_point][-1][0], threshold=1e-6).bounds[:,0,:]
     bounds_round = np.array(bounds).copy()
     for bi in range(len(bounds_truncated)):
@@ -222,14 +225,46 @@ if __name__ == "__main__":
         print("  "+A.param_names[poi]+f":{reduction*100: .0f}% ({reduction_orig*100: .0f}% ) ")
     print()
     
-
-    # Make truncation variabes independent of configuration variables. Make truncation continue automatically. 
-    # include true_obs in observations
-
     
-    # Make variable overwrite truncation. If 0, record is copied back. If 1, stores are deleted. 
+    # Computing expected limit predictions: 
+    if which_truncation == n_truncations and n_sim_explim:
+        
+        print('Making predictions for expected limits...')
+        print()
+        
+        store_explim_path = args.path + "/sim_output/store/" + store_name + "_explim" + truncation_round_str + grid_point_str
+        store_explim = swyft.ZarrStore(store_explim_path)
+        if len(store_explim) == 0:
+            raise ValueError("Expected limits-store is empty!")
+        samples_explim = store_explim.get_sample_store()
         
         
+        n_limits = len(samples_explim)
+        n_prior_samples = len(prior_samples)
+        
+        
+        batch_size = 1024
+        repeat = n_prior_samples // batch_size + (n_prior_samples % batch_size > 0)
+        
+        
+        trainer = swyft.SwyftTrainer(
+            accelerator = DEVICE, precision = 64, logger=wandb_logger, 
+            enable_progress_bar=True, max_epochs=max_epochs, 
+            log_every_n_steps=50,callbacks=[TQDMProgressBar(refresh_rate=20)]
+        )
+        
+        
+        predictions = trainer.infer(
+            network,
+            samples_explim.get_dataloader(batch_size=1,repeat=repeat),
+            prior_samples.get_dataloader(batch_size=batch_size)
+        )
+        
+        with open(results_dir+'/'+filename_explim_predictions,'wb') as file:
+            pickle.dump(predictions, file)
+            
+
+
         
         
         

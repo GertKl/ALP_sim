@@ -152,7 +152,7 @@ if __name__ == "__main__":
     
     # Formatting selected physics arguments
     
-    if config_dict['update_physics']: 
+    if config_dict['update_physics'] or not os.path.exists(results_dir+'/'+filename_phys): 
         config_phys_dict = {}
         
         # print(config_dict['model_params'])
@@ -243,6 +243,7 @@ if __name__ == "__main__":
             param_names=param_names,
             param_units=param_units,
             ALP_seed=eval(config_dict['ALP_seed']),
+            noise_seed = None,
             floor=float(config_dict['floor_exp']),
             floor_obs=float(config_dict['floor_obs']), # not reflected in training set of all_larger_bounds
             logcounts=True,
@@ -289,7 +290,7 @@ if __name__ == "__main__":
         
         # Saving physics variables to files
         save_variables(config_phys_dict, results_dir+'/'+filename_phys)
-        print("Saved all physics-related variables to "+filename_phys)
+        print("Saved all physics-related variables to "+results_dir+'/'+filename_phys)
         print()
     
     
@@ -297,15 +298,22 @@ if __name__ == "__main__":
         # Simulating the mock true observation, on which to base truncation
         print("Simulating mock observation... ", end='', flush=True)
         bounds_for_true_obs = [[obs_param,obs_param] for obs_param in obs_params] 
-        sim_for_true_obs = ALP_SWYFT_Simulator(A, bounds_for_true_obs)
-        true_obs = sim_for_true_obs.sample(1, progress_bar=False)[0]
-        true_obs_dict = dict(true_obs=true_obs)
+        A.configure_model(noise_seed=eval(config_dict['obs_seed']))
+        try:
+            sim_for_true_obs = ALP_SWYFT_Simulator(A, bounds_for_true_obs)
+            true_obs = sim_for_true_obs.sample(1, progress_bar=False)[0]
+            true_obs_dict = dict(true_obs=true_obs)
+            A.configure_model(noise_seed=None)
+        except Exception as Err:
+            A.configure_model(noise_seed=None)
+            print(Err)
+            
         print("done.")
 
 
         # Saving mock true observation to file
         save_variables(true_obs_dict, results_dir+'/'+filename_true_obs)
-        print("Saved mock true observation to "+filename_true_obs)
+        print("Saved mock true observation to "+results_dir+'/'+filename_true_obs)
         print()
 
     
