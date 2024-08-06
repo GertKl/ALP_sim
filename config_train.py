@@ -35,7 +35,6 @@ if __name__ == "__main__":
     f.write("\n\n")
 
 
-
     if on_cluster in ["fox"]:
         f.write("#SBATCH --job-name=swyft_training")
         f.write("\n")
@@ -86,15 +85,14 @@ if __name__ == "__main__":
         raise ValueError("Cluster \""+on_cluster+"\" not recognized")
     f.write("\n\n")
         
-    if gpus:
+    if gpus:     
         f.write("\n\n")
         f.write("export 'PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:24258'")   #24258
         f.write("\n\n")
-        # f.write("ulimit -n 64")
         f.write("\n\n")
         f.write("# Setup monitoring")
         f.write("\n\n")
-        f.write("nvidia-smi --query-gpu=timestamp,utilization.gpu,utilization.memory --format=csv --loop=1 > \""+results_dir+"/train_output/train_outputs/gpu_util-$SLURM_JOB_ID.csv\" &")
+        f.write("nvidia-smi --query-gpu=timestamp,utilization.gpu,utilization.memory --format=csv --loop=1 > \""+results_dir+"/train_output/train_outputs/gpu_util-$SLURM_JOB_ID.csv\" & ")
         f.write("\n\n")
         f.write("NVIDIA_MONITOR_PID=$!  # Capture PID of monitoring process")
         f.write("\n\n")

@@ -118,7 +118,7 @@ if __name__ == "__main__":
     all_samples = store.get_sample_store()
     samples = all_samples[:n_sim_round]
     
-    
+    print("Training on " + str(len(samples)) + " samples" )
     print("Store length: " + str(len(samples)))
 
     module_name = 'architecture'
@@ -253,12 +253,13 @@ if __name__ == "__main__":
             log_every_n_steps=50,callbacks=[TQDMProgressBar(refresh_rate=20)]
         )
         
-        
+        T.start()
         predictions = trainer.infer(
             network,
             samples_explim.get_dataloader(batch_size=1,repeat=repeat),
             prior_samples.get_dataloader(batch_size=batch_size)
         )
+        T.stop('Time spent making predictions for expected limits')
         
         with open(results_dir+'/'+filename_explim_predictions,'wb') as file:
             pickle.dump(predictions, file)

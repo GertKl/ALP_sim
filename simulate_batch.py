@@ -90,9 +90,12 @@ if __name__ == "__main__":
     
     
     if isinstance(n_sim_train,int):
-        n_sim_round = copy.copy(n_sim_train)+n_sim_coverage
+        n_sim_round = copy.copy(n_sim_train)
     else:
-        n_sim_round = copy.copy(n_sim_train[min(which_truncation,len(n_sim_train)-1)])+n_sim_coverage
+        n_sim_round = copy.copy(n_sim_train[min(which_truncation,len(n_sim_train)-1)])
+        
+    if which_truncation == n_truncations:
+        n_sim_round += n_sim_coverage
     
     n_sim_prior = n_prior_samples
 
@@ -144,14 +147,15 @@ if __name__ == "__main__":
         dtypes=sands[1],
         )
     
-    store_explim = swyft.ZarrStore(store_explim_path)
-    if len(store_explim) == 0:
-        store_explim.init(
-        N = n_sim_explim,
-        chunk_size=chunk_size_explim,
-        shapes=sands[0],
-        dtypes=sands[1],
-        )
+    if n_sim_explim and which_truncation == n_truncations:
+        store_explim = swyft.ZarrStore(store_explim_path)
+        if len(store_explim) == 0:
+            store_explim.init(
+            N = n_sim_explim,
+            chunk_size=chunk_size_explim,
+            shapes=sands[0],
+            dtypes=sands[1],
+            )
         
     store_prior = swyft.ZarrStore(store_prior_path)
     if len(store_prior) == 0:
@@ -164,13 +168,16 @@ if __name__ == "__main__":
         
         
     print()
-    print("Unfinished simulations: " + str(store.sims_required+store_explim.sims_required))
+    if n_sim_explim and which_truncation == n_truncations:
+        print("Unfinished simulations: " + str(store.sims_required+store_explim.sims_required))
+    else:
+        print("Unfinished simulations: " + str(store.sims_required))
     
     if on_cluster in ["fox"]:
         np.random.seed(None)
         random.seed(None)
         store.simulate(sim, batch_size=chunk_size, max_sims=chunk_size*n_chunks)
-        store_explim.simulate(sim_explim, batch_size=chunk_size_explim, max_sims=chunk_size_explim*n_chunks_explim)
+        if n_sim_explim and which_truncation == n_truncations: store_explim.simulate(sim_explim, batch_size=chunk_size_explim, max_sims=chunk_size_explim*n_chunks_explim)
         store_prior.simulate(sim_explim, batch_size=chunk_size_explim, max_sims=chunk_size_explim*n_chunks_explim,targets=['params'])
     
     elif on_cluster in ["hepp", "local"]:
@@ -198,7 +205,7 @@ if __name__ == "__main__":
         for pi in range(n_jobs_sim):
             processes[pi].join()
         
-        if n_sim_explim:
+        if n_sim_explim and which_truncation == n_truncations:
             print()
             print("Simulating samples for expected limits. ")
             print("Running " +str(n_jobs_sim)+ " parallel simulation jobs, with "+str(n_chunks_explim*chunk_size_explim)+" simulations each, split into (at most) "+str(n_chunks_explim)+" chunks of "+str(chunk_size_explim)+".")
