@@ -19,6 +19,7 @@ import time
 import datetime
 import itertools
 import copy
+import os
 
 import torch
 torch.set_float32_matmul_precision('medium')
@@ -28,6 +29,11 @@ from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks import TQDMProgressBar
 import wandb
 
+
+
+def convert_pair_to_index(pair,n_indices):
+    pair = sorted(pair)
+    return int((pair[0]+1)*(n_indices-1+n_indices-pair[0]-1)/2 - n_indices + pair[1])
 
 
 class Timer():
@@ -95,8 +101,9 @@ if __name__ == "__main__":
     for key in true_obs_dict.keys():
         locals()[key] = true_obs_dict[key]
     
+    network_file = results_dir+"/train_output/net/trained_network"+"_round_"+str(which_truncation)+"_gridpoint_"+str(which_grid_point)+".pt"
     
-    sim = ALP_SWYFT_Simulator(A, bounds_rounds[-1][-1], prior_funcs)
+    sim = ALP_SWYFT_Simulator(A, bounds_rounds[which_grid_point][which_truncation], prior_funcs)
     
     if isinstance(n_sim_train,int):
         n_sim_round = copy.copy(n_sim_train)
@@ -143,13 +150,27 @@ if __name__ == "__main__":
     else:
         network = net.NetworkCorner(A.nbins, POI_indices, A.param_names, **hyperparams_point)
 
-    
-    wandb_logger = WandbLogger(log_model='all')
+
+    train_net = 1
+    if os.path.exists(use_old_net):
+        network.load_state_dict(torch.load(use_old_net))
+        print('Loaded old network state')
+        if not continue_training: train_net=0
+    else:
+        if eval(use_old_net):
+            if os.path.exists(network_file):
+                network.load_state_dict(torch.load(network_file))
+                print('Loaded old network state')
+                if not continue_training: train_net=0
+                
+            
+
+    if train_net: wandb_logger = WandbLogger(log_model='all')
     
     DEVICE = 'cpu' if not gpus else 'cuda'
     
     trainer = swyft.SwyftTrainer(
-        accelerator = DEVICE, precision = 64, logger=wandb_logger, 
+        accelerator = DEVICE, precision = 64, logger=wandb_logger if train_net else None, 
         enable_progress_bar=not on_cluster, max_epochs=max_epochs, 
         log_every_n_steps=50,
     )
@@ -167,25 +188,26 @@ if __name__ == "__main__":
     
     T.start()
     
-    try:
-        trainer.fit(network, dm)
-    except Exception as Err:
+    if train_net:
+        try:
+            trainer.fit(network, dm)
+        except Exception as Err:
+            print()
+            print("*******TRAINING FAILED*********")
+            print(Err)
+        
         print()
-        print("*******TRAINING FAILED*********")
-        print(Err)
+        print("Current time and date: " + str(datetime.datetime.now()).split(".")[0])
+        print()
+        T.stop("Time spent training")
+        print()
     
-    print()
-    print("Current time and date: " + str(datetime.datetime.now()).split(".")[0])
-    print()
-    T.stop("Time spent training")
-    print()
-    
-    wandb.finish()
+        wandb.finish()
                             
     
     try:
-        torch.save(network.state_dict(), results_dir+"/train_output/net/trained_network"+"_round_"+str(which_truncation)+"_gridpoint_"+str(count)+".pt")
-        print("Network state dict saved as "+results_dir+"/train_output/net/trained_network"+"_round_"+str(which_truncation)+"_gridpoint_"+str(count)+".pt")
+        torch.save(network.state_dict(), network_file)
+        print("Network state dict saved as "+ network_file)
     except Exception as Err2:
         print(Err2)
     print()
@@ -201,13 +223,19 @@ if __name__ == "__main__":
     prior_samples = store_prior.get_sample_store()
     
     logratios_round = trainer.infer(network, true_obs, prior_samples)
-    logratios_rounds[which_grid_point].append(logratios_round)
+    if len(logratios_rounds[which_grid_point]) < which_truncation+1:
+        logratios_rounds[which_grid_point].append(logratios_round)
+    else:
+        logratios_rounds[which_grid_point][which_truncation] = logratios_round
+        
     
-    bounds_truncated = swyft.lightning.bounds.get_rect_bounds(logratios_rounds[which_grid_point][-1][0], threshold=1e-6).bounds[:,0,:]
+    bounds_truncated = swyft.lightning.bounds.get_rect_bounds(logratios_rounds[which_grid_point][which_truncation][0], threshold=1e-6).bounds[:,0,:]
     bounds_round = np.array(bounds).copy()
-    for bi in range(len(bounds_truncated)):
-        bounds_round[POI_indices[bi]] = np.array(bounds_truncated[bi])
-    bounds_rounds[which_grid_point].append(np.array(bounds_round))
+    for bi in range(len(bounds_truncated)): bounds_round[POI_indices[bi]] = np.array(bounds_truncated[bi])
+    if len(bounds_rounds[which_grid_point]) < which_truncation+2:    
+        bounds_rounds[which_grid_point].append(np.array(bounds_round))
+    else:
+        bounds_rounds[which_grid_point][which_truncation+1] = bounds_round
     # print(bounds_rounds)
 
     truncation_dict['logratios_rounds'] = logratios_rounds
@@ -220,8 +248,8 @@ if __name__ == "__main__":
     print("Parameter space reductions compared to previous round (to original bounds):")
     print()
     for poi in POI_indices:
-        reduction = 1-(bounds_rounds[which_grid_point][-1][poi][1]-bounds_rounds[which_grid_point][-1][poi][0])/(bounds_rounds[which_grid_point][-2][poi][1]-bounds_rounds[which_grid_point][-2][poi][0])
-        reduction_orig = 1-(bounds_rounds[which_grid_point][-1][poi][1]-bounds_rounds[which_grid_point][-1][poi][0])/(bounds_rounds[which_grid_point][0][poi][1]-bounds_rounds[which_grid_point][0][poi][0])
+        reduction = 1-(bounds_rounds[which_grid_point][which_truncation+1][poi][1]-bounds_rounds[which_grid_point][which_truncation+1][poi][0])/(bounds_rounds[which_grid_point][which_truncation][poi][1]-bounds_rounds[which_grid_point][which_truncation][poi][0])
+        reduction_orig = 1-(bounds_rounds[which_grid_point][which_truncation+1][poi][1]-bounds_rounds[which_grid_point][which_truncation+1][poi][0])/(bounds_rounds[which_grid_point][0][poi][1]-bounds_rounds[which_grid_point][0][poi][0])
         print("  "+A.param_names[poi]+f":{reduction*100: .0f}% ({reduction_orig*100: .0f}% ) ")
     print()
     
@@ -248,9 +276,9 @@ if __name__ == "__main__":
         
         
         trainer = swyft.SwyftTrainer(
-            accelerator = DEVICE, precision = 64, logger=wandb_logger, 
+            accelerator = DEVICE, precision = 64, 
             enable_progress_bar=True, max_epochs=max_epochs, 
-            log_every_n_steps=50,callbacks=[TQDMProgressBar(refresh_rate=20)]
+            log_every_n_steps=50,callbacks=[TQDMProgressBar(refresh_rate=100)]
         )
         
         T.start()
@@ -260,11 +288,21 @@ if __name__ == "__main__":
             prior_samples.get_dataloader(batch_size=batch_size)
         )
         T.stop('Time spent making predictions for expected limits')
+        print()
+        
+        #reducing the size of the predictions before saving
+        predictions[0] = None
+        prediction_indices = []
+        for pair in prediction_pairs:
+            prediction_indices.append(convert_pair_to_index(pair, len(POI_indices)))
+        predictions[1].logratios = predictions[1].logratios[:,prediction_indices].to(torch.float32)
+        predictions[1].params = predictions[1].params[:,prediction_indices,:].to(torch.float32)
+        
         
         with open(results_dir+'/'+filename_explim_predictions,'wb') as file:
             pickle.dump(predictions, file)
             
-
+        print("Expected limit predictions saved as "+ filename_explim_predictions)
 
         
         

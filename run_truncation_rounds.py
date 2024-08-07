@@ -98,15 +98,29 @@ if __name__ == "__main__":
             
 
         which_truncation = len( truncation_dict["logratios_rounds"][which_grid_point] )-1
+        if which_truncation > n_truncations:
+            print()
+            print('NOTE: which_truncation was set to ' + str(which_truncation) + 'which is larger than \
+                  n_truncations, which is ' + str(n_truncations) + ". Setting which_truncation to \
+                      " + str(n_truncations) + ".")
+            print()
+            which_truncation=n_truncations
         
         truncation_dict['which_grid_point'] = which_grid_point
         
         truncated_anything = False
     
+        # print('truncation ' + str(which_truncation))
+    
+        truncations_to_do = range(which_truncation, n_truncations) if which_truncation != n_truncations else range(retrain_last_round)
         
-        for i in range(which_truncation, n_truncations):
+        for i in truncations_to_do:
             
-            which_truncation+=1
+            # print('truncation ' + str(which_truncation))
+            
+            which_truncation = which_truncation+1 if which_truncation != n_truncations else n_truncations
+            
+            # print('truncation ' + str(which_truncation))
           
             truncation_dict['which_truncation'] = which_truncation
             

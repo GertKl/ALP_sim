@@ -135,6 +135,16 @@ if __name__ == "__main__":
     config_dict['hyperparams'] = hyperparams_dict
     
     
+    # Formatting prediction pairs
+    prediction_pairs = ",".join(config_dict['prediction_pairs'])
+    prediction_pairs = prediction_pairs.split('),')
+    for ppi, pair in enumerate(prediction_pairs):
+        try:
+            prediction_pairs[ppi] = eval(pair+')')
+        except SyntaxError as SErr:
+            prediction_pairs[ppi] = eval(pair)
+    config_dict['prediction_pairs'] = prediction_pairs
+    
     
     # Printing variables to file for double-checking 
     file_control = open(results_dir + "/" + filename_control, "w")

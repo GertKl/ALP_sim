@@ -1,7 +1,7 @@
 #!/bin/bash
 
 trap "exit" INT TERM ERR
-trap "kill 0" EXIT
+trap "kill 0 2>/dev/null" EXIT
 
 
 

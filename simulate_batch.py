@@ -78,14 +78,14 @@ if __name__ == "__main__":
         locals()[key] = truncation_dict[key]
     
     
-    bounds_explim = copy.copy(bounds_rounds[which_grid_point][-1])
+    bounds_explim = copy.copy(bounds_rounds[which_grid_point][which_truncation])
     prior_funcs_explim = copy.copy(prior_funcs)
     for poi in POI_indices: 
         bounds_explim[poi] = [obs_params[poi],obs_params[poi]]
         prior_funcs_explim[poi] = 'U'
     
 
-    sim = ALP_SWYFT_Simulator(A, bounds_rounds[which_grid_point][-1], prior_funcs)
+    sim = ALP_SWYFT_Simulator(A, bounds_rounds[which_grid_point][which_truncation], prior_funcs)
     sim_explim = ALP_SWYFT_Simulator(A, bounds_explim, prior_funcs_explim)
     
     
@@ -127,10 +127,10 @@ if __name__ == "__main__":
         store_path = args.path + "/sim_output/store/" + store_name + truncation_round_str + grid_point_str
         store_explim_path = args.path + "/sim_output/store/" + store_name + "_explim" + truncation_round_str + grid_point_str
         store_prior_path = args.path + "/sim_output/store/" + store_name + "_prior" + truncation_round_str + grid_point_str
-        if os.path.exists(store_path) and not use_old_truncations:
-            shutil.rmtree(store_path)
-            shutil.rmtree(store_explim_path)
-            shutil.rmtree(store_prior_path)
+        # if os.path.exists(store_path) and not use_old_truncations:
+        #     shutil.rmtree(store_path)
+        #     shutil.rmtree(store_explim_path)
+        #     shutil.rmtree(store_prior_path)
     else:
         store_path = args.path + "/sim_output/store/" + store_name
         store_explim_path = args.path + "/sim_output/store/" + store_name + "_explim"
@@ -196,6 +196,7 @@ if __name__ == "__main__":
         T.start()
         print()
         print("Simulating training- and coverage samples. ")
+        print("Store: "+store_path)
         print("Running " +str(n_jobs_sim)+ " parallel simulation jobs, with "+str(n_chunks*chunk_size)+" simulations each, split into (at most) "+str(n_chunks)+" chunks of "+str(chunk_size)+".")
         for pi in range(int(n_jobs_sim)):
             sim_obj = copy.deepcopy(sim)
@@ -208,6 +209,7 @@ if __name__ == "__main__":
         if n_sim_explim and which_truncation == n_truncations:
             print()
             print("Simulating samples for expected limits. ")
+            print("Store: "+store_explim_path)
             print("Running " +str(n_jobs_sim)+ " parallel simulation jobs, with "+str(n_chunks_explim*chunk_size_explim)+" simulations each, split into (at most) "+str(n_chunks_explim)+" chunks of "+str(chunk_size_explim)+".")
             for pi in range(int(n_jobs_sim)):
                 sim_obj = copy.deepcopy(sim_explim)
@@ -220,6 +222,7 @@ if __name__ == "__main__":
         if n_prior_samples:
             print()
             print("Drawing prior samples. ")
+            print("Store: "+store_prior_path)
             print("Running " +str(n_jobs_sim)+ " parallel draws, with "+str(n_chunks_prior*chunk_size_prior)+" draws each, split into (at most) "+str(n_chunks_prior)+" chunks of "+str(chunk_size_prior)+".")
             for pi in range(int(n_jobs_sim)):
                 sim_obj = copy.deepcopy(sim)
