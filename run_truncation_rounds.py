@@ -61,8 +61,10 @@ if __name__ == "__main__":
         truncation_dict['bounds_rounds'] = [[np.array(bounds)]]
         truncation_dict['logratios_rounds'] = [[]]
 
-
+    
     which_grid_point = copy.copy(start_grid_test_at_count)-1
+    
+    # print("Which truncation: " + str(len( truncation_dict["logratios_rounds"][which_grid_point] )-1)) 
     
     for ci,combo in enumerate(itertools.product(*hyperparams.values())):
         
@@ -83,6 +85,7 @@ if __name__ == "__main__":
             print()
 
     
+        # print("Which truncation: " + str(len( truncation_dict["logratios_rounds"][which_grid_point] )-1)) 
 
         # Intervening to prevent re-truncating the original store for every grid point. 
         if os.path.exists(results_dir+'/'+filename_truncation_record):
@@ -90,19 +93,21 @@ if __name__ == "__main__":
             with open(args.path+'/' +filename_truncation_record, 'rb') as file:
                 truncation_dict = pickle.load(file)
             
+        # print("Which truncation: " + str(len( truncation_dict["logratios_rounds"][which_grid_point] )-1)) 
+
 
         # Adding a grid point slolt in the record, if not already in place
         if len(truncation_dict['logratios_rounds']) < which_grid_point+1:  
             truncation_dict['bounds_rounds'].append([bounds,truncation_dict['bounds_rounds'][0][1]])
             truncation_dict['logratios_rounds'].append([truncation_dict['logratios_rounds'][0][0]])
             
-
+            
+        # print("Which truncation: " + str(len( truncation_dict["logratios_rounds"][which_grid_point] )-1))    
+            
         which_truncation = len( truncation_dict["logratios_rounds"][which_grid_point] )-1
         if which_truncation > n_truncations:
             print()
-            print('NOTE: which_truncation was set to ' + str(which_truncation) + 'which is larger than \
-                  n_truncations, which is ' + str(n_truncations) + ". Setting which_truncation to \
-                      " + str(n_truncations) + ".")
+            print('NOTE: which_truncation was set to ' + str(which_truncation) + 'which is larger than n_truncations, which is ' + str(n_truncations) + ". Setting which_truncation to " + str(n_truncations) + ".")
             print()
             which_truncation=n_truncations
         

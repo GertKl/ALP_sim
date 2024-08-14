@@ -13,6 +13,7 @@ from tqdm.auto import tqdm
 import copy
 from multiprocessing import Pool
 
+
 def _get_HDI_thresholds(x, cred_level=[0.68268, 0.95450, 0.99730]):
     x = x.flatten()
     x = np.sort(x)[::-1]  # Sort backwards
@@ -32,6 +33,8 @@ def make_contour_matrix(tup,):
     limit_credibility=tup[4]
     bins=tup[5]
     param_names=tup[6]
+    
+    exclusion_areas = np.zeros(stop-start)
 
     for i in tqdm(range(start,stop)): #range(n_limits): 
     
@@ -51,6 +54,7 @@ def make_contour_matrix(tup,):
         if i==start:
             X,Y = np.meshgrid(np.linspace(0,counts.shape[0]-1,counts.shape[0]),np.linspace(0,counts.shape[1]-1,counts.shape[1]))
             matrix_total = np.zeros(X.shape)
+            
 
 
         plt.figure('dummy')
@@ -67,9 +71,10 @@ def make_contour_matrix(tup,):
                 matrix_i[mask] = 0
 
         matrix_total += matrix_i
+        exclusion_areas[i-start] = np.sum(matrix_i)/float(bins**2)
         plt.close('dummy')
 
-    return matrix_total
+    return matrix_total, exclusion_areas
 
 
 def generate_expected_limits(samples,
@@ -78,10 +83,11 @@ def generate_expected_limits(samples,
                              net = None,  
                              trainer = None,
                              contour_matrix = None,
+                             exclusion_areas = None,
                              predictions = None,
                              ax=None,
                              limit_credibility=0.9973,
-                             levels = [0.003,0.05,0.34,0.682,0.95,0.9973,1],
+                             levels = [0.003,0.046,0.318,0.682,0.954,0.997,1],
                              fill=True,
                              bins=50,
                              batch_size = 1024,
@@ -103,7 +109,7 @@ def generate_expected_limits(samples,
         n_prior_samples = len(prior_samples)
 
     
-    if not np.any(predictions) and not np.any(contour_matrix):
+    if predictions is None and (contour_matrix is None or exclusion_areas is None):
         repeat = n_prior_samples // batch_size + (n_prior_samples % batch_size > 0)
         
         predictions = trainer.infer(
@@ -112,7 +118,7 @@ def generate_expected_limits(samples,
             prior_samples.get_dataloader(batch_size=batch_size)
         )
         
-    if contour_matrix is None:
+    if contour_matrix is None or exclusion_areas is None:
       
 
         iterable = [( si*(n_limits//n_cores), 
@@ -133,11 +139,14 @@ def generate_expected_limits(samples,
                 pool.terminate()
                 print(err)
         pool.close()
-
-        matrix_total = np.sum(np.array(res), axis=0)
+        
+        
+        matrix_total = np.sum(np.array([r[0] for r in res]), axis=0)
+        exclusion_areas = np.concatenate([r[1] for r in res])
     
     else:
         matrix_total = contour_matrix
+        exclusion_areas = exclusion_areas
 
     if not ax:
         fig = plt.figure()
@@ -155,9 +164,9 @@ def generate_expected_limits(samples,
     # plt.close('dummy')
     
     if not ax:
-        return matrix_total, predictions, fig
+        return matrix_total, exclusion_areas, predictions, fig
     else:
-        return matrix_total, predictions, ax
+        return matrix_total, exclusion_areas, predictions, ax
 
 
 
@@ -175,6 +184,8 @@ def make_contour_matrix_for_false_exclusions(tup,):
     limit_credibility=tup[4]
     bins=tup[5]
     param_names=tup[6]
+    
+    exclusion_areas = np.zeros(stop-start)
 
     for i in tqdm(range(start,stop)): #range(n_limits): 
     
@@ -191,11 +202,13 @@ def make_contour_matrix_for_false_exclusions(tup,):
                 param_names,
                 bins = bins,
             )
+            
     
             if i==start and pi==0:
                 X,Y = np.meshgrid(np.linspace(0,counts.shape[0]-1,counts.shape[0]),np.linspace(0,counts.shape[1]-1,counts.shape[1]))
                 matrix_total = np.zeros(X.shape)
-                matrices = [np.ones(X.shape),np.ones(X.shape)]
+                
+            if pi==0: matrices = [np.ones(X.shape),np.ones(X.shape)]
     
     
             plt.figure('dummy')
@@ -208,12 +221,15 @@ def make_contour_matrix_for_false_exclusions(tup,):
                     mask = path.contains_points(np.vstack((X.flatten(), Y.flatten())).T,radius=1e-9)
                     mask = mask.reshape(X.shape)
                     matrices[pi][mask] = 0 # 0 means not excluded
-    
-            matrix_total += np.logical_and(matrices[0]==1, matrices[1]==0).astype(int)
             
             plt.close('dummy')
+        
+        matrix_i = np.logical_and(matrices[0]==1, matrices[1]==0).astype(int)
+        matrix_total += matrix_i
+        exclusion_areas[i-start] = np.sum(matrix_i)/float(bins**2)
 
-    return matrix_total
+
+    return matrix_total, exclusion_areas
 
 
 
@@ -224,6 +240,7 @@ def find_false_exclusions(samples,
                           prior_samples2,
                           bounds,
                           contour_matrix = None,
+                          false_exclusion_areas = None,
                           predictions1 = None,
                           predictions2 = None,
                           net1 = None,
@@ -260,7 +277,7 @@ def find_false_exclusions(samples,
             n_prior_samples[pi] = len(prior_samples[pi])
 
     
-        if not np.any(predictions[pi]) and not np.any(contour_matrix):
+        if predictions is None and (contour_matrix is None or false_exclusion_areas is None):
             repeat = n_prior_samples[pi] // batch_size + (n_prior_samples[pi] % batch_size > 0)
             
             predictions[pi] = trainer.infer(
@@ -269,7 +286,7 @@ def find_false_exclusions(samples,
                 prior_samples[pi].get_dataloader(batch_size=batch_size)
             )
         
-    if contour_matrix is None:
+    if contour_matrix is None or false_exclusion_areas is None:
         
         
         iterable = [( si*(n_limits//n_cores), 
@@ -281,20 +298,24 @@ def find_false_exclusions(samples,
                      param_names,
                     ) for si in range(n_cores) ]
     
-        
-        with Pool(n_cores) as pool:
-            try:
-                res = pool.map(make_contour_matrix_for_false_exclusions,iterable,chunksize = 1,)
-                pool.terminate()
-            except Exception as err:
-                pool.terminate()
-                print(err)
-        pool.close()
-
-        matrix_total = np.sum(np.array(res), axis=0)
+        if n_cores > 1:
+            with Pool(n_cores) as pool:
+                try:
+                    res = pool.map(make_contour_matrix_for_false_exclusions,iterable,chunksize = 1,)
+                    pool.terminate()
+                except Exception as err:
+                    pool.terminate()
+                    print(err)
+            pool.close()
+    
+            matrix_total = np.sum(np.array([r[0] for r in res]), axis=0)
+            false_exclusion_areas = np.concatenate([r[1] for r in res])
+        else:
+            matrix_total,false_exclusion_areas = make_contour_matrix_for_false_exclusions(iterable[0])
     
     else:
         matrix_total = contour_matrix
+        false_exclusion_areas = false_exclusion_areas
 
     if not ax:
         fig = plt.figure()
@@ -312,9 +333,9 @@ def find_false_exclusions(samples,
     # plt.close('dummy')
     
     if not ax:
-        return matrix_total, predictions, fig
+        return matrix_total, false_exclusion_areas, predictions, fig
     else:
-        return matrix_total, predictions , ax
+        return matrix_total, false_exclusion_areas,  predictions , ax
 
 
 

@@ -35,6 +35,8 @@ import logging
 logging.getLogger('pytorch_lightning').setLevel(0)
 logging.getLogger('lightning.pytorch').setLevel(0)
 
+from pytorch_lightning.callbacks import TQDMProgressBar
+
 logging.getLogger("lightning.pytorch.accelerators.cuda").setLevel(0)
 import warnings
 warnings.simplefilter("ignore")
@@ -48,6 +50,168 @@ warnings.simplefilter("ignore")
 torch.set_num_threads(28)
 
 __all__ = ("get_drp_coverage",)
+
+
+
+
+def rejection_sampling_new(sim,trainer,network,observations,n_samps,excess_factor=5, max_iters=1000, sampling_device='cuda',n_processes=1):
+
+
+    
+    successes_min=0
+    iters=0
+    
+    samps1d = {}
+    samps2d = {}
+    
+    # bounds_gpu = bounds
+    
+    batch_size = 1024
+    
+    observations_unfinished = list(np.arange(len(observations),dtype=int))
+    
+    while successes_min<n_samps and iters<max_iters :
+            
+        iters += 1
+
+        # prior_samples_manual = torch.rand((n_samps*excess_factor,len(bounds_gpu)), device=sampling_device)*(bounds_gpu[:,1]-bounds_gpu[:,0]) + bounds_gpu[:,0]
+        prior_samples = sim.sample(n_samps*excess_factor, targets=['params'])
+        # prior_samps = swyft.Samples(params=np.array(prior_samples_manual.to('cpu')))
+        
+        # prior_samps_dl = prior_samps.get_dataloader(batch_size=int(min(batch_size,n_samps*excess_factor)/n_processes), num_workers=0, pin_memory=True)
+        
+        # logratios1d, logratios2d = trainer.infer(network,observ,prior_samps_dl)
+
+
+        repeat = n_samps // batch_size + (n_samps % batch_size > 0)
+        
+        observations_reduced = swyft.Samples({key : val[observations_unfinished] for key,val in observations.items() })
+        logratios1d, logratios2d = trainer.infer(
+            network,
+            observations_reduced.get_dataloader(batch_size=1,repeat=repeat,num_workers=0),
+            prior_samples.get_dataloader(batch_size=batch_size,num_workers=0)
+        )
+
+
+        if iters == 1:
+            samps1d = {name[0]: [np.zeros(n_samps) for _ in range(len(observations))] for name in logratios1d.parnames} 
+            samps2d = {"["+names[0]+","+names[1]+"]": [np.zeros(shape=(n_samps,2)) for _ in range(len(observations)) ] for names in logratios2d.parnames}
+            successes1d = [ np.zeros(len(observations),dtype=int) for pi in range(len(logratios1d.parnames))]
+            successes2d = [ np.zeros(len(observations),dtype=int) for pi in range(len(logratios2d.parnames))]
+            # successes2d = np.zeros(len(logratios2d.parnames),dtype=int)
+            # successes_previous = np.zeros(len(logratios1d.parnames)+len(logratios2d.parnames),dtype=int)
+  
+        log_ratios_1d = logratios1d.logratios.to(sampling_device)
+        param_values_1d = logratios1d.params.to(sampling_device)
+
+        log_ratios_2d = logratios2d.logratios.to(sampling_device)
+        param_values_2d = logratios2d.params.to(sampling_device)
+        
+        
+        for i, name in enumerate(samps1d.keys()):
+            if np.min(successes1d[i][observations_unfinished]) < n_samps:
+                samples_temp = param_values_1d[:,i]
+                samples_temp[torch.rand(log_ratios_1d[:,i].flatten().shape).to(sampling_device)<torch.exp(log_ratios_1d[:,i]-torch.max(log_ratios_1d[:,i]))] = np.inf
+                samples_temp = samples_temp.flatten().to('cpu')
+                
+                samples = [ samples_temp[obi*n_samps:(obi+1)*n_samps]  for obi in range(len(observations_unfinished))  ]
+                samples = [ samples[obi][samples[obi] != np.inf] for obi in range(len(observations_unfinished))   ]
+                sample_successes = [len(samples[obi]) for obi in range(len(observations_unfinished))]
+                
+                needed = [int(n_samps-successes1d[i][observations_unfinished[obi]]) for obi in range(len(observations_unfinished))]
+                new_successes = [ min(needed[obi],sample_successes[obi]) for obi in range(len(observations_unfinished)) ]
+                
+                for obi in range(len(observations)): 
+                    if new_successes[obi]: samps1d[name][observations_unfinished[obi]][int(successes1d[i][obi]):int(successes1d[i][obi]+new_successes[obi])] = samples[obi][:int(new_successes[obi])]
+                
+                successes1d[i] = np.array([ len(samps1d[name][obi]) for obi in range(len(observations)) ])
+                # successes_previous[i] = len(samples_temp)
+                
+                
+                
+        for i, names in enumerate(samps2d.keys()):
+            if np.min(successes2d[i][observations_unfinished]) < n_samps:
+                samples_temp = param_values_2d[:,i]
+                samples_temp[torch.rand(log_ratios_2d[:,i].shape).to(sampling_device)<torch.exp(log_ratios_2d[:,i]-torch.max(log_ratios_2d[:,i]))] = np.inf
+                samples_temp = samples_temp.to('cpu')
+                
+                samples = [ samples_temp[obi*n_samps:(obi+1)*n_samps]  for obi in range(len(observations_unfinished))  ]
+                samples = [ samples[obi][samples[obi] != np.inf] for obi in range(len(observations_unfinished))   ]
+                sample_successes = [len(samples[obi]) for obi in range(len(observations_unfinished))]
+                
+                needed = [int(n_samps-successes2d[i][observations_unfinished[obi]]) for obi in range(len(observations_unfinished))]
+                new_successes = [ min(needed[obi],sample_successes[obi]) for obi in range(len(observations_unfinished)) ]
+                
+                for obi in range(len(observations)): 
+                    if new_successes[obi]: samps2d[names][observations_unfinished[obi]][int(successes2d[i][obi]):int(successes2d[i][obi]+new_successes[obi])] = samples[obi][:int(new_successes[obi])]
+                    
+                successes2d[i] = np.array([ len(samps2d[name][obi]) for obi in range(len(observations)) ])
+                # successes_previous[i+len(logratios1d.parnames)] = len(samples_temp)
+                
+        successes_min = min(np.min(successes1d),np.min(successes2d))
+        
+        observations_unfinished = list(np.arange(len(observations),dtype=int)[np.logical_and( np.min(successes1d,axis=0)<n_samps, np.min(successes2d,axis=0)<n_samps ).astype(int)])
+        
+        print('Progress: ' + str(successes_min/n_samps) + "\%")
+        print('Observations finished: '+str(len(observations_unfinished)/len(observations)) + "\%")
+        
+    if iters >= max_iters: raise ValueError("Maximum iterations reached!")
+
+    
+    return samps1d, samps2d
+
+
+
+def draw_DRP_samples_new(tup, ):#observations,n_draws,net_path,device,bounds,nbins,POI_indices,param_names,excess_factor,max_iter):
+        
+    sim=tup[0]
+    observations=tup[1]
+    n_draws=tup[2]
+    net_path=tup[3]
+    device=tup[4]
+    nbins=tup[5]
+    POI_indices=tup[6]
+    param_names=tup[7]
+    excess_factor=tup[8]
+    max_iter=tup[9]
+    n_processes=tup[10]
+    hyperparams_point = tup[11]
+    
+    net_dir = net_path.split('net')[0] + "net"
+    
+    
+    draws1d = {}
+    draws2d = {}
+    
+    n_obs= len(observations)
+    
+    module_name = 'architecture'
+    spec = importlib.util.spec_from_file_location(module_name, net_dir+"/network.py")
+    net = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(net)
+    NetworkCorner = net.NetworkCorner
+    
+    net = NetworkCorner(nbins=nbins, marginals=POI_indices, param_names=param_names, **hyperparams_point)
+
+    try:
+        # print(net.load_state_dict())
+        net.load_state_dict(torch.load(net_path))
+    except Exception as err:
+        print(err)
+
+    trainer = swyft.SwyftTrainer(accelerator = device,enable_progress_bar=True,callbacks=[TQDMProgressBar(refresh_rate=100)])
+      
+    draws1d, draws2d = rejection_sampling_new(sim,trainer,net,observations,n_draws,excess_factor=excess_factor, max_iters=max_iter, sampling_device = device, n_processes=n_processes)
+    
+    
+    return draws1d, draws2d, n_obs
+
+
+
+
+
+
+
 
 
 

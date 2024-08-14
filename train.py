@@ -297,6 +297,7 @@ if __name__ == "__main__":
             prediction_indices.append(convert_pair_to_index(pair, len(POI_indices)))
         predictions[1].logratios = predictions[1].logratios[:,prediction_indices].to(torch.float32)
         predictions[1].params = predictions[1].params[:,prediction_indices,:].to(torch.float32)
+        predictions[1].parnames = predictions[1].parnames[prediction_indices]
         
         
         with open(results_dir+'/'+filename_explim_predictions,'wb') as file:

@@ -1,7 +1,8 @@
 #!/bin/bash
 
-trap "exit" INT TERM ERR
-trap "kill 0 2>/dev/null" EXIT
+#trap "exit" INT TERM ERR
+#trap "kill 0 2>/dev/null" EXIT
+trap "kill -s SIGTERM 0 2>/dev/null" EXIT
 
 
 
