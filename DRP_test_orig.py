@@ -22,7 +22,6 @@ from matplotlib import pyplot as plt
 import swyft
 
 import os
-import copy
 
 import torch
 import importlib
@@ -44,11 +43,6 @@ warnings.simplefilter("ignore")
 
 from multiprocessing import Pool
 
-from alp_swyft_simulator import ALP_SWYFT_Simulator
-from ALP_quick_sim import ALP_sim
-
-import time
-
 # import network 
 
 
@@ -58,39 +52,15 @@ torch.set_num_threads(28)
 
 __all__ = ("get_drp_coverage",)
 
-class Timer():
-    
-    def __init__(self):
-        self.start_time = None
-        self.stop_time = None
-    
-    def start(self):
-        self.start_time = time.time()
-        
-    def stop(self,what="Elapsed time"):
-        self.stop_time = time.time()
-        h,m,s = Timer.process_time(self.stop_time-self.start_time)
-        print(what + ": "+str(h)+" h, "+str(m)+" min, "+str(s)+" sec.")
-    
-    @staticmethod
-    def process_time(s):
-        h = int(s/3600)
-        m = int((s-3600*h)/60)
-        s = int(s-3600*h-60*m)
-        return h, m, s
-    
-    
+
 def draw_prior_samples(tup):
-    A = tup[0]
-    bounds = tup[1]
-    prior_funcs = tup[2]
-    n_samples = tup[3]
-    enable_progress_bar = tup[4]
-    sim = ALP_SWYFT_Simulator(A,bounds,prior_funcs)
-    return sim.sample(n_samples, targets=['params'],progress_bar=enable_progress_bar)
+    sim = tup[0]
+    n_samples = tup[1]
+    enable_progress_bar = tup[2]
+    return sim.sample(n_samples, targets=['params'],enable_progress_bar=enable_progress_bar)
 
 
-def rejection_sampling_new(A,bounds,prior_funcs,trainer,network,observations,n_samps,excess_factor=5, max_iters=1000, sampling_device='cuda',n_processes=1,progress_bar=True):
+def rejection_sampling_new(sim,trainer,network,observations,n_samps,excess_factor=5, max_iters=1000, sampling_device='cuda',n_processes=1):
 
 
     
@@ -102,29 +72,24 @@ def rejection_sampling_new(A,bounds,prior_funcs,trainer,network,observations,n_s
     
     # bounds_gpu = bounds
     
-    batch_size = 2**15
+    batch_size = 1024
     
     observations_unfinished = list(np.arange(len(observations),dtype=int))
     
-    if n_processes <= 1: sim = ALP_SWYFT_Simulator(A,bounds,prior_funcs)
     
-    T=Timer()
-
+    
     while successes_min<n_samps and iters<max_iters :
-           
-        T.start()
-        
+            
         iters += 1
         
+        
+        
+        iterable = [(sim,
+                     int(n_samps/n_processes)+(1-min(1,n_samps//n_processes))*(n_samps%n_processes),
+                     1-min(si,1),
+                    ) for si in range(n_processes) ]
+        
         if n_processes>1:
-            
-            iterable = [(A,
-                         bounds,
-                         prior_funcs,
-                         int((excess_factor*n_samps)/n_processes)+(1-min(1,(excess_factor*n_samps)//n_processes))*((excess_factor*n_samps)%n_processes),
-                         1-min(si,1) if progress_bar else 0,
-                        ) for si in range(n_processes) ]
-            
             with Pool(n_processes) as pool:
                 try:
                     res = pool.map(draw_prior_samples,iterable,chunksize = 1,)
@@ -153,14 +118,14 @@ def rejection_sampling_new(A,bounds,prior_funcs,trainer,network,observations,n_s
         observations_reduced = swyft.Samples({key : val[observations_unfinished] for key,val in observations.items() })
         logratios1d, logratios2d = trainer.infer(
             network,
-            observations_reduced.get_dataloader(batch_size=1,repeat=repeat,num_workers=0,pin_memory=True),
-            prior_samples.get_dataloader(batch_size=batch_size,num_workers=0,pin_memory=True)
+            observations_reduced.get_dataloader(batch_size=1,repeat=repeat,num_workers=0),
+            prior_samples.get_dataloader(batch_size=batch_size,num_workers=0)
         )
 
 
         if iters == 1:
-            samps1d = {name[0]: np.zeros(shape=(n_samps,len(observations),1)) for name in logratios1d.parnames} 
-            samps2d = {"["+names[0]+","+names[1]+"]": np.zeros(shape=(n_samps,len(observations),2)) for names in logratios2d.parnames}
+            samps1d = {name[0]: [np.zeros(n_samps) for _ in range(len(observations))] for name in logratios1d.parnames} 
+            samps2d = {"["+names[0]+","+names[1]+"]": [np.zeros(shape=(n_samps,2)) for _ in range(len(observations)) ] for names in logratios2d.parnames}
             successes1d = np.array([ np.zeros(len(observations),dtype=int) for pi in range(len(logratios1d.parnames))])
             successes2d = np.array([ np.zeros(len(observations),dtype=int) for pi in range(len(logratios2d.parnames))])
             # successes2d = np.zeros(len(logratios2d.parnames),dtype=int)
@@ -176,7 +141,7 @@ def rejection_sampling_new(A,bounds,prior_funcs,trainer,network,observations,n_s
         for i, name in enumerate(samps1d.keys()):
             if np.min(successes1d[i][observations_unfinished]) < n_samps:
                 samples_temp = param_values_1d[:,i]
-                samples_temp[torch.rand(log_ratios_1d[:,i].flatten().shape).to(sampling_device)>torch.exp(log_ratios_1d[:,i]-torch.max(log_ratios_1d[:,i]))] = np.inf
+                samples_temp[torch.rand(log_ratios_1d[:,i].flatten().shape).to(sampling_device)<torch.exp(log_ratios_1d[:,i]-torch.max(log_ratios_1d[:,i]))] = np.inf
                 samples_temp = samples_temp.flatten().to('cpu')
                 
                 samples = [ samples_temp[obi*int(excess_factor*n_samps):(obi+1)*int(excess_factor*n_samps)]  for obi in range(len(observations_unfinished))  ]
@@ -191,7 +156,7 @@ def rejection_sampling_new(A,bounds,prior_funcs,trainer,network,observations,n_s
                     # print(needed[obi])
                     # print(new_successes[obi])
                     # print(successes1d[i][observations_unfinished[obi]])
-                    if new_successes[obi]: samps1d[name][:,observations_unfinished[obi],:][int(successes1d[i][observations_unfinished[obi]]):int(successes1d[i][observations_unfinished[obi]]+new_successes[obi])] = samples[obi][:int(new_successes[obi]),np.newaxis]
+                    if new_successes[obi]: samps1d[name][observations_unfinished[obi]][int(successes1d[i][observations_unfinished[obi]]):int(successes1d[i][observations_unfinished[obi]]+new_successes[obi])] = samples[obi][:int(new_successes[obi])]
                     successes1d[i][observations_unfinished[obi]] += new_successes[obi]
                 # samps1d[name] = np.array(samps1d[name])
                 
@@ -203,7 +168,7 @@ def rejection_sampling_new(A,bounds,prior_funcs,trainer,network,observations,n_s
         for i, names in enumerate(samps2d.keys()):
             if np.min(successes2d[i][observations_unfinished]) < n_samps:
                 samples_temp = param_values_2d[:,i]
-                samples_temp[torch.rand(log_ratios_2d[:,i].shape).to(sampling_device)>torch.exp(log_ratios_2d[:,i]-torch.max(log_ratios_2d[:,i]))] = np.inf
+                samples_temp[torch.rand(log_ratios_2d[:,i].shape).to(sampling_device)<torch.exp(log_ratios_2d[:,i]-torch.max(log_ratios_2d[:,i]))] = np.inf
                 samples_temp = samples_temp.to('cpu')
                 
                 samples = [ samples_temp[obi*int(excess_factor*n_samps):(obi+1)*int(excess_factor*n_samps)]  for obi in range(len(observations_unfinished))  ]
@@ -215,7 +180,7 @@ def rejection_sampling_new(A,bounds,prior_funcs,trainer,network,observations,n_s
                 
                 for obi in range(len(observations_unfinished)): 
                     if new_successes[obi]: 
-                        samps2d[names][:,observations_unfinished[obi],:][int(successes2d[i][observations_unfinished[obi]]):int(successes2d[i][observations_unfinished[obi]]+new_successes[obi])] = samples[obi][:int(new_successes[obi])]
+                        samps2d[names][observations_unfinished[obi]][int(successes2d[i][observations_unfinished[obi]]):int(successes2d[i][observations_unfinished[obi]]+new_successes[obi])] = samples[obi][:int(new_successes[obi])]
                         successes2d[i][observations_unfinished[obi]] += new_successes[obi]
                 # samps1d[name] = np.array(samps1d[name])
                 
@@ -235,12 +200,9 @@ def rejection_sampling_new(A,bounds,prior_funcs,trainer,network,observations,n_s
         # print(np.logical_or( np.min(successes1d,axis=0)<n_samps, np.min(successes2d,axis=0)<n_samps ))
         # print(successes_max)
         
-        print('----------------------------------------------------------', flush=True)
         print('Progress: ' + str(round(100*successes_min/n_samps)) + "%")
         print('Observations finished: '+str(round((1-len(observations_unfinished)/len(observations))*100)) + "%")
         if not 1-len(100*observations_unfinished)/len(observations) > 0: print('  Closest : ' + str(round(100*successes_max/n_samps)) + "%")
-        T.stop('Time spent on this round')
-        print('----------------------------------------------------------', flush=True)
         
     if iters >= max_iters: raise ValueError("Maximum iterations reached!")
 
@@ -250,27 +212,26 @@ def rejection_sampling_new(A,bounds,prior_funcs,trainer,network,observations,n_s
 
 def draw_DRP_samples_new(tup, ):#observations,n_draws,net_path,device,bounds,nbins,POI_indices,param_names,excess_factor,max_iter):
         
-    A=tup[0]
-    bounds=tup[1]
-    prior_funcs=tup[2]
-    observations=tup[3]
-    n_draws=tup[4]
-    net_path=tup[5]
-    device=tup[6]
-    nbins=tup[7]
-    POI_indices=tup[8]
-    param_names=tup[9]
-    excess_factor=tup[10]
-    max_iter=tup[11]
-    n_processes=tup[12]
-    hyperparams_point = tup[13]
-    enable_progress_bar=tup[14]
+    sim=tup[0]
+    observations=tup[1]
+    n_draws=tup[2]
+    net_path=tup[3]
+    device=tup[4]
+    nbins=tup[5]
+    POI_indices=tup[6]
+    param_names=tup[7]
+    excess_factor=tup[8]
+    max_iter=tup[9]
+    n_processes=tup[10]
+    hyperparams_point = tup[11]
     
     net_dir = net_path.split('net')[0] + "net"
     
     
     draws1d = {}
     draws2d = {}
+    
+    n_obs= len(observations)
     
     module_name = 'architecture'
     spec = importlib.util.spec_from_file_location(module_name, net_dir+"/network.py")
@@ -286,12 +247,12 @@ def draw_DRP_samples_new(tup, ):#observations,n_draws,net_path,device,bounds,nbi
     except Exception as err:
         print(err)
 
-    trainer = swyft.SwyftTrainer(accelerator = device,enable_progress_bar=enable_progress_bar,callbacks=[TQDMProgressBar(refresh_rate=100)] if enable_progress_bar else None)
+    trainer = swyft.SwyftTrainer(accelerator = device,enable_progress_bar=True,callbacks=[TQDMProgressBar(refresh_rate=100)])
       
-    draws1d, draws2d = rejection_sampling_new(A,bounds,prior_funcs,trainer,net,observations,n_draws,excess_factor=excess_factor, max_iters=max_iter, sampling_device = device, n_processes=n_processes,progress_bar=enable_progress_bar)
+    draws1d, draws2d = rejection_sampling_new(sim,trainer,net,observations,n_draws,excess_factor=excess_factor, max_iters=max_iter, sampling_device = device, n_processes=n_processes)
     
     
-    return draws1d, draws2d
+    return draws1d, draws2d, n_obs
 
 
 

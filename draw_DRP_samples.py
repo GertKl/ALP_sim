@@ -13,7 +13,7 @@ import torch
 from torch.multiprocessing import Pool
 
 
-from DRP_test import draw_DRP_samples
+from DRP_test import draw_DRP_samples_new
 import pickle
 
 import argparse
@@ -29,11 +29,11 @@ torch.set_num_threads(28)
 
 filename_variables = "config_variables.pickle"
 filename_phys = "physics_variables.pickle"
+filename_truncation_record = "truncation_record.pickle"
 
 
 
-if __name__ == "__main__":
-    
+if __name__=='__main__': 
     
     parser = argparse.ArgumentParser(description="")
     parser.add_argument("-path", type=str)
@@ -54,105 +54,96 @@ if __name__ == "__main__":
         config_dict = pickle.load(file)
     for key in config_dict.keys():
         locals()[key] = config_dict[key]
+        
+    # loading information on previous truncations
+    with open(args.path+'/' +filename_truncation_record, 'rb') as file:
+        truncation_dict = pickle.load(file)
+    for key in truncation_dict.keys():
+        locals()[key] = truncation_dict[key]
+    
+    
+    
+    DEVICE = 'cpu' if not gpus else 'cuda'
 
 
-    store = swyft.ZarrStore(args.path + "/sim_output/store/" + store_name)
+
+
+    grid_point_str = "_gridpoint_"+str(which_grid_point) if which_truncation > 0 else ""
+    truncation_round_str = "_round_" + str(which_truncation) if which_truncation > 0 else ""
+    store_path = args.path + "/sim_output/store/" + store_name + truncation_round_str + grid_point_str
+    store = swyft.ZarrStore(store_path)
     if len(store) == 0:
         raise ValueError("Store is empty!")
         
-    
+
     all_samples = store.get_sample_store()
     samples = all_samples[-n_sim_coverage:]
-    
-    
+
+
     print("Store length: " + str(len(samples)))
 
-    # module_name = 'architecture'
-    # spec = importlib.util.spec_from_file_location(module_name, results_dir+"/train_output/net/network.py")
-    # net = importlib.util.module_from_spec(spec)
-    # spec.loader.exec_module(net)
 
-    DEVICE = 'cpu' if not gpus else 'cuda'
+    which_net = 0
+
     
+    # print()
+    # print("Posterior draws per coverage sim: " + str(n_draws))
+    # print("Coverage sims: " + str(n_coverage))
+    # print("First coverage sim: " + str(n_sim_coverage_start))
+    # print("Grid point (model): " + str(which_net))
+    # print("Number of processes: " + str(n_processes_cov))
+    # print()
+    
+    DRP_path = results_dir+"/train_output/net/DRP_draws.pickle"
+    if os.path.exists(DRP_path):
+        
+        print()
+        print("Draws already exist for these specifications.")
+        
+    else:
+    
+        grid_point = which_net
+        
+        count = 0
+        for combo in itertools.product(*hyperparams.values()):
+            if count == grid_point:
+                hyperparams_point = {}
+                for i, key in enumerate(hyperparams.keys()):
+                    hyperparams_point[key]=combo[i]
+            count +=1
+        
+        
+        
+        print(len(samples[:min(DRP_coverage_parameters[1],n_sim_coverage)]))
+        print(DRP_coverage_parameters[0])
+        
+        draws1d,draws2d = draw_DRP_samples_new(
+            (
+                A,
+                bounds_rounds[which_grid_point][which_truncation],
+                prior_funcs,
+                samples[:min(DRP_coverage_parameters[1],n_sim_coverage)],
+                DRP_coverage_parameters[0],
+                results_dir+"/train_output/net/trained_network_round_"+str(which_truncation)+"_gridpoint_"+str(grid_point)+'.pt',
+                DEVICE,
+                A.nbins,
+                POI_indices,
+                A.param_names,
+                1000,
+                1000,
+                n_jobs_sim,
+                hyperparams_point,
+                True,
+            )
+        )
+        
 
-    if __name__=='__main__':
-
-        for DRPCP in DRP_coverage_parameters:
-            
-            n_draws = int(DRPCP[0])
-            n_coverage = int(DRPCP[1])
-            n_sim_coverage_start = int(DRPCP[2])
-            which_net = int(DRPCP[3])
-            n_processes_cov = int(DRPCP[4])
-            
-            
-            print()
-            print("Posterior draws per coverage sim: " + str(n_draws))
-            print("Coverage sims: " + str(n_coverage))
-            print("First coverage sim: " + str(n_sim_coverage_start))
-            print("Grid point (model): " + str(which_net))
-            print("Number of processes: " + str(n_processes_cov))
-            print()
-            
-            DRP_path = results_dir+"/train_output/net/DRP_draws_"+"_".join([str(i) for i in np.array(DRPCP)[:-1]])+".pickle"
-            if os.path.exists(DRP_path):
-                
-                print()
-                print("Draws already exist for these specifications.")
-                
-            else:
-            
-                grid_point = which_net
-                
-                count = 1
-                for combo in itertools.product(*hyperparams.values()):
-                    if count == grid_point:
-                        hyperparams_point = {}
-                        for i, key in enumerate(hyperparams.keys()):
-                            hyperparams_point[key]=combo[i]
-                    count +=1
-                
-                
-                iterable = list(np.zeros(n_processes_cov))
-                extra_step = 1 if not n_coverage%n_processes_cov==0 else 0
-                for itb in range(len(iterable)):
-                    range_start = n_sim_coverage_start + itb*(int(n_coverage/n_processes_cov)+extra_step)
-                    range_stop = range_start + int(n_coverage/n_processes_cov)+extra_step
-                    range_stop = range_stop if range_stop < n_sim_coverage_start+n_coverage else n_sim_coverage_start+n_coverage
-                    iterable[itb] = (
-                                        samples[range_start:range_stop],   
-                                           n_draws,
-                                           results_dir+"/train_output/net/trained_network_"+str(which_net)+".pt",
-                                           DEVICE,
-                                           bounds,
-                                           A.nbins,
-                                           POI_indices,
-                                           A.param_names,
-                                           8,
-                                           1000,
-                                           n_processes_cov,
-                                           hyperparams_point,
-                                       )
-                
-                with Pool(n_processes_cov) as pool:
-                    try:
-                        res = pool.map(draw_DRP_samples,iterable,chunksize = 1,)
-                    except Exception as err:
-                        pool.terminate()
-                        print(err)
-                
-                pool.terminate()
-                pool.close()
-            
-            
-                draws1d = { key : np.concatenate([ res[i][0][key] for i in range(len(res))],axis=1) for key in res[0][0].keys() }
-                draws2d = { key : np.concatenate([ res[i][1][key] for i in range(len(res))],axis=1) for key in res[0][1].keys() }
-                
-                with open(DRP_path,'wb') as file:
-                        pickle.dump(dict(
-                            draws1d=draws1d,
-                            draws2d=draws2d,
-                        ), file)
+        
+        with open(DRP_path,'wb') as file:
+                pickle.dump(dict(
+                    draws1d=draws1d,
+                    draws2d=draws2d,
+                ), file)
 
 
 

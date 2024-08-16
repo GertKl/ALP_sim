@@ -144,9 +144,9 @@ if __name__ == "__main__":
         
 
     if restricted_posterior == 1 or len(POI_indices) == 1:
-        network = net.Network1D(nbins=A.nbins, marginals=POI_indices, param_names=A.param_names)
+        network = net.Network1D(nbins=A.nbins, marginals=POI_indices, param_names=A.param_names,**hyperparams_point)
     elif restricted_posterior == 2:
-        network = net.Network2D(nbins=A.nbins, marginals=POI_indices, param_names=A.param_names)
+        network = net.Network2D(nbins=A.nbins, marginals=POI_indices, param_names=A.param_names,**hyperparams_point)
     else:
         network = net.NetworkCorner(A.nbins, POI_indices, A.param_names, **hyperparams_point)
 
@@ -229,7 +229,10 @@ if __name__ == "__main__":
         logratios_rounds[which_grid_point][which_truncation] = logratios_round
         
     
-    bounds_truncated = swyft.lightning.bounds.get_rect_bounds(logratios_rounds[which_grid_point][which_truncation][0], threshold=1e-6).bounds[:,0,:]
+    try:
+        bounds_truncated = swyft.lightning.bounds.get_rect_bounds(logratios_rounds[which_grid_point][which_truncation][0], threshold=1e-6).bounds[:,0,:]
+    except TypeError:
+        bounds_truncated = swyft.lightning.bounds.get_rect_bounds(logratios_rounds[which_grid_point][which_truncation], threshold=1e-6).bounds[:,0,:]
     bounds_round = np.array(bounds).copy()
     for bi in range(len(bounds_truncated)): bounds_round[POI_indices[bi]] = np.array(bounds_truncated[bi])
     if len(bounds_rounds[which_grid_point]) < which_truncation+2:    

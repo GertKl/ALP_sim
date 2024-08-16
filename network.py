@@ -128,39 +128,41 @@ class Network(swyft.AdamWReduceLROnPlateau, swyft.SwyftModule):
                 num_params = len(self.marginals), 
                 varnames = list(np.array(self.param_names)[self.marginals])
             )
-            marginals_2d = []
-            for i, el in enumerate(self.marginals[:-1]):
-                for j in np.arange(i+1,len(self.marginals)):
-                    marginals_2d.append( (el,self.marginals[j]) )
-            marginals_2d = tuple(marginals_2d)
-            self.logratios2 = swyft.LogRatioEstimator_Ndim(
-                num_features = self.logratio_features,
-                hidden_features=self.features,
-                num_blocks=self.blocks,
-                dropout=self.dropout,
-                marginals = marginals_2d, 
-                varnames = [[np.array(self.param_names)[self.marginals][i] for i in marginal] for marginal in marginals_2d ]
-            )
+            
+            if len(marginals)>1:
+                marginals_2d = []
+                for i, el in enumerate(self.marginals[:-1]):
+                    for j in np.arange(i+1,len(self.marginals)):
+                        marginals_2d.append( (el,self.marginals[j]) )
+                marginals_2d = tuple(marginals_2d) 
+                self.logratios2 = swyft.LogRatioEstimator_Ndim(
+                    num_features = self.logratio_features,
+                    hidden_features=self.features,
+                    num_blocks=self.blocks,
+                    dropout=self.dropout,
+                    marginals = marginals_2d, 
+                    varnames = [[np.array(self.param_names)[self.marginals][i] for i in marginal] for marginal in marginals_2d ]
+                )
 
 class Network1D(Network):
-    def __init__(self, nbins, marginals, param_names, features=64, blocks=2, lr=5e-2, stopping_patience=5, dropout=0):
-        super().__init__(nbins, marginals, param_names, features=features, blocks=blocks, lr=lr, stopping_patience=stopping_patience,dropout=dropout)
+    def __init__(self,*args,**kwargs):
+        super().__init__(*args,**kwargs)
         self.logratios2=None
     def forward(self, A, B): 
         data = self.head_net(A)
         return self.logratios(data, B['params'][:,self.marginals])
     
 class Network2D(Network):
-    def __init__(self, nbins, marginals, param_names, features=64, blocks=2, lr=5e-2, stopping_patience=5, dropout=0):
-        super().__init__(nbins, marginals, param_names, features=features, blocks=blocks, lr=lr, stopping_patience=stopping_patience, dropout=dropout)
+    def __init__(self,*args,**kwargs):
+        super().__init__(*args,**kwargs)
         self.logratios=None
     def forward(self, A, B): 
         data = self.head_net(A)
         return self.logratios2(data, B['params'][:,self.marginals])
             
 class NetworkCorner(Network):
-    def __init__(self,*args,**kwargs):#self, nbins, marginals, param_names, features=64, blocks=2, lr=5e-2, stopping_patience=5, dropout=0):
-        super().__init__(*args,**kwargs) #nbins, marginals, param_names, features=features, blocks=blocks, lr=lr, stopping_patience=stopping_patience, dropout=dropout)
+    def __init__(self,*args,**kwargs):
+        super().__init__(*args,**kwargs) 
     def forward(self, A, B):
         data = self.head_net(A)
         return self.logratios(data, B['params'][:,self.marginals]), self.logratios2(data, B['params'][:,self.marginals])       
