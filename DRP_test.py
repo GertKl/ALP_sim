@@ -18,6 +18,7 @@ from typing import Tuple, Union
 
 import numpy as np
 from matplotlib import pyplot as plt
+import matplotlib.cm as cm
 
 import swyft
 
@@ -153,8 +154,8 @@ def rejection_sampling_new(A,bounds,prior_funcs,trainer,network,observations,n_s
         observations_reduced = swyft.Samples({key : val[observations_unfinished] for key,val in observations.items() })
         logratios1d, logratios2d = trainer.infer(
             network,
-            observations_reduced.get_dataloader(batch_size=1,repeat=repeat,num_workers=0,pin_memory=True),
-            prior_samples.get_dataloader(batch_size=batch_size,num_workers=0,pin_memory=True)
+            observations_reduced.get_dataloader(batch_size=1,repeat=repeat,num_workers=0,pin_memory=False),
+            prior_samples.get_dataloader(batch_size=batch_size,num_workers=0,pin_memory=False)
         )
 
 
@@ -320,11 +321,17 @@ def rejection_sampling(trainer, network,observ,n_samps,bounds,excess_factor=5, m
         iters += 1
 
         prior_samples_manual = torch.rand((n_samps*excess_factor,len(bounds_gpu)), device=sampling_device)*(bounds_gpu[:,1]-bounds_gpu[:,0]) + bounds_gpu[:,0]
-        prior_samps = swyft.Samples(params=np.array(prior_samples_manual.to('cpu')))
+        prior_samps = swyft.Samples(params=np.array(prior_samples_manual.to('cpu')).astype(np.float64))
         
-        prior_samps_dl = prior_samps.get_dataloader(batch_size=int(min(1024*32,n_samps*excess_factor)/n_processes), num_workers=0, pin_memory=True)
+        # prior_samps_dl = prior_samps.get_dataloader(batch_size=int(min(1024*32,n_samps*excess_factor)/n_processes), num_workers=0, pin_memory=True)
         
-        logratios1d, logratios2d = trainer.infer(network,observ,prior_samps_dl)
+        # print(prior_samps)
+        # print()
+        # print('##############################################################################################################3')
+        # print()
+        # print(observ)
+        
+        logratios1d, logratios2d = trainer.infer(network,observ,prior_samps, batch_size=int(min(1024*32,n_samps*excess_factor)/n_processes))
 
         if iters == 1:
             samps1d = {name[0]: np.zeros(n_samps) for name in logratios1d.parnames}
@@ -407,7 +414,7 @@ def draw_DRP_samples(tup, ):#observations,n_draws,net_path,device,bounds,nbins,P
     except Exception as err:
         print(err)
 
-    trainer = swyft.SwyftTrainer(accelerator = device,enable_progress_bar=False,)
+    trainer = swyft.SwyftTrainer(accelerator = device,enable_progress_bar=False,precision=64)
     
     bounds_gpu = torch.tensor(bounds).to(device)
     
@@ -440,10 +447,12 @@ def get_drp_coverage(
     samples: np.ndarray,
     theta: np.ndarray,
     references: Union[str, np.ndarray] = "random",
+    weights = None,
     bounds: Union[list[float],np.ndarray] = [],
     theta_names: list[str]=[],
     axes: Union[int,list] = 9,
     metric: str = "euclidean",
+    maxy = 1,
 ) -> Tuple[np.ndarray, np.ndarray]:
     """
     Estimates coverage with the distance to random point method.
@@ -544,7 +553,9 @@ def get_drp_coverage(
         figures = list(np.zeros(n_figs))
         axes = list(np.zeros(n_figs))
         for i in range(len(figures)):
-            figures[i], axes[i] = plt.subplots() 
+            figures[i], axes[i] = plt.subplots()
+            axes[i].set_xlim([0,1])
+            axes[i].set_ylim([0,1])
     else:                                         #could use some error handling
         n_figs = min(len(axes),samples.shape[1])
         figures = None
@@ -552,13 +563,32 @@ def get_drp_coverage(
 
 
     samples_plot = samples[:,:n_figs,:]
+    
+    if not weights is None: cmap = cm.get_cmap('turbo')
+    theta_plot = theta.copy()
+    references_plot = references.copy()
+    theta_distances_plot = theta_distances.copy()
+
+
 
     for i in range(n_figs):
         n_inside=0
         samples_plot_inside = samples_plot[  samples_distances[:,i] < theta_distances[0,i] , i, : ]
         samples_plot_outside = samples_plot[  samples_distances[:,i] >= theta_distances[0,i], i, :  ]
         
-        n_inside = len(samples_plot_inside[:,0])
+        
+        
+        if weights is None:
+            n_inside = len(samples_plot_inside[:,0])
+        else:
+            weights_inside = weights[samples_distances[:,i] < theta_distances[0,i],i]
+            weights_outside = weights[samples_distances[:,i] >= theta_distances[0,i],i]
+            n_inside = np.sum(np.ones(len(samples_plot_inside[:,0]))*weights_inside)
+            
+            # print(weights.shape)
+            # print(samples_plot_outside[:,0].shape)
+            # print(weights_outside.shape)
+            # print()
 
         if num_dims == 1:
             
@@ -566,40 +596,62 @@ def get_drp_coverage(
             bin_edges = np.linspace(0,1,n_bins_1d)
             # bin_centers = (bin_edges[:-1]+bin_edges[1:])/2
 
+            maxweight = np.max(weights[:,i])
+
             for ed in range(len(bin_edges)-1):
-                samples_plot_inside = samples_plot_inside[bin_edges[ed]<=samples_plot_inside[:,0]]
-                samples_plot_outside = samples_plot_outside[bin_edges[ed]<=samples_plot_outside[:,0]]
-                samples_plot_inside_bin = samples_plot_inside[bin_edges[ed+1]>samples_plot_inside[:,0]]
-                samples_plot_outside_bin = samples_plot_outside[ bin_edges[ed+1]>samples_plot_outside[:,0]]
+                samples_plot_inside_temp = samples_plot_inside[bin_edges[ed]<=samples_plot_inside[:,0]]
+                samples_plot_outside_temp = samples_plot_outside[bin_edges[ed]<=samples_plot_outside[:,0]]
+                samples_plot_inside_bin = samples_plot_inside_temp[bin_edges[ed+1]>samples_plot_inside_temp[:,0]]
+                samples_plot_outside_bin = samples_plot_outside_temp[ bin_edges[ed+1]>samples_plot_outside_temp[:,0]]
+
+                if not weights is None:
+                    weights_inside_temp = weights_inside[bin_edges[ed]<=samples_plot_inside[:,0]]
+                    weights_outside_temp = weights_outside[bin_edges[ed]<=samples_plot_outside[:,0]]
+                    weights_in_bin = weights_inside_temp[bin_edges[ed+1]>samples_plot_inside_temp[:,0]]
+                    weights_not_in_bin = weights_outside_temp[ bin_edges[ed+1]>samples_plot_outside_temp[:,0]]
+                
                 lenin = len(samples_plot_inside_bin[:,0])
                 lenout = len(samples_plot_outside_bin[:,0])
                 
                 num_samps_bin = lenin+lenout
 
-                # axes[i].scatter(samples_plot_inside_bin[:,0],np.arange(lenout,lenout+lenin),marker='x',color='c')
-                # axes[i].scatter(samples_plot_outside_bin[:,0],np.arange(lenout),marker='x',color='b')
-
-                axes[i].scatter(samples_plot_inside_bin[:,0],np.random.uniform(num_samps_bin,size=lenin),marker='x',color='c')
-                axes[i].scatter(samples_plot_outside_bin[:,0],np.random.uniform(num_samps_bin,size=lenout),marker='x',color='b')
-
-
-                # axes[i].scatter(samples_plot_inside_bin[:,0],np.random.exponential(scale=max(num_samps_bin/(np.log(num_samps_bin/1)),1),size=lenin),marker='x',color='c')
-                # axes[i].scatter(samples_plot_outside_bin[:,0],np.random.exponential(scale=max(num_samps_bin/(np.log(num_samps_bin/1)),1),size=lenout),marker='x',color='b')
+                samples_plot_inside_bin[:,0] = samples_plot_inside_bin[:,0]*(high.item()-low.item()) + low.item()
+                samples_plot_outside_bin[:,0] = samples_plot_outside_bin[:,0]*(high.item()-low.item()) + low.item()
                 
-                axes[i].axvline(theta[0,i,0],color='r')
-                axes[i].axvline(references[i,0],color='g')
-                axes[i].axvline(references[i,0]-theta_distances[0,i],color='r',linestyle=":")
-                axes[i].axvline(references[i,0]+theta_distances[0,i],color='r',linestyle=":")
-                if len(theta_names) >= 1:
-                    axes[i].set_xlabel(theta_names[0])
-                axes[i].set_title('Samples in $\Theta_{{DRP}}$: {:.0f}/{:.0f} = {:.0f}%'.format(n_inside,num_samples, 100*n_inside/num_samples))
-                axes[i].set_yticks([])
-                axes[i].set_xlim([0, 1])
+                if weights is None:
+                    axes[i].scatter(samples_plot_inside_bin[:,0],np.random.uniform(num_samps_bin/num_samples,size=lenin),marker='x',color='c')
+                    axes[i].scatter(samples_plot_outside_bin[:,0],np.random.uniform(num_samps_bin/num_samples,size=lenout),marker='x',color='b')
+                else:
+                    axes[i].scatter(samples_plot_inside_bin[:,0],np.random.uniform(0,maxy*weights_in_bin/(maxweight)),marker='x',color=cmap(weights_in_bin/num_samples))
+                    axes[i].scatter(samples_plot_outside_bin[:,0],np.random.uniform(0,maxy*weights_not_in_bin/(maxweight)),marker='x',color=cmap(weights_not_in_bin/num_samples),alpha=0.5)
+              
+            theta_plot[0,i,0] = theta[0,i,0]*(high.item()-low.item()) + low.item()
+            references_plot[i,0] = references[i,0]*(high.item()-low.item()) + low.item()
+            theta_distances_plot[0,i] = theta_distances[0,i]*(high.item()-low.item())
+
+                
+            axes[i].axvline(theta_plot[0,i,0],color='r')
+            axes[i].axvline(references_plot[i,0],color='g')
+            axes[i].axvline(references_plot[i,0]-theta_distances_plot[0,i],color='r',linestyle=":")
+            axes[i].axvline(references_plot[i,0]+theta_distances_plot[0,i],color='r',linestyle=":")
+            if len(theta_names) >= 1:
+                axes[i].set_xlabel(theta_names[0])
+            axes[i].set_title('Samples in $\Theta_{{DRP}}$: {:.0f}/{:.0f} = {:.0f}%'.format(n_inside,num_samples, 100*n_inside/num_samples))
+            axes[i].set_yticks([])
+
 
         
         if num_dims == 2:
-            axes[i].scatter(samples_plot_inside[:,0],samples_plot_inside[:,1],marker='x',color='c')
-            axes[i].scatter(samples_plot_outside[:,0],samples_plot_outside[:,1],marker='x',color='b')
+            
+            if weights is None:
+                axes[i].scatter(samples_plot_inside[:,0],samples_plot_inside[:,1],marker='x',color='c')
+                axes[i].scatter(samples_plot_outside[:,0],samples_plot_outside[:,1],marker='x',color='b')
+            else:
+                axes[i].scatter(samples_plot_inside[:,0],samples_plot_inside[:,1],marker='x',color=cmap(weights_inside[:,i]/num_samples),)
+                axes[i].scatter(samples_plot_outside[:,0],samples_plot_outside[:,1],marker='x',color=cmap(weights_outside[:,i]/num_samples),alpha=0.5,)
+            
+            
+            
             axes[i].plot(theta[0,i,plot_margs[0]], theta[0,i,plot_margs[1]],'ro')
             axes[i].scatter(references[i,plot_margs[0]], references[i,plot_margs[1]],color='g',marker='+',s=80,linewidths=2.5)
             circle = plt.Circle((references[i,plot_margs[0]],references[i,plot_margs[1]]), theta_distances[0,i], fill=0, color='r')
@@ -617,7 +669,10 @@ def get_drp_coverage(
             axes[i].set_title('Samples in $\Theta_{{DRP}}$: {:.0f}/{:.0f} = {:.0f}%'.format(n_inside,len(samples[:,i,plot_margs[0]]), 100*n_inside/len(samples[:,i,plot_margs[0]])))
 
     # Compute coverage
-    f = np.sum((samples_distances < theta_distances), axis=0) / num_samples
+    if weights is None:
+        f = np.sum((samples_distances < theta_distances), axis=0) / num_samples
+    else:
+        f = np.sum((samples_distances < theta_distances)*weights, axis=0) / num_samples
 
     # Compute expected coverage
     h, alpha = np.histogram(f, density=True, bins= min(20, num_sims // min(10,num_sims)))

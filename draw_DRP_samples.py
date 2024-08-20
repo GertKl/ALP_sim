@@ -129,7 +129,7 @@ if __name__=='__main__':
                 A.nbins,
                 POI_indices,
                 A.param_names,
-                1000,
+                8,
                 1000,
                 n_jobs_sim,
                 hyperparams_point,
