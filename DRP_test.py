@@ -19,6 +19,7 @@ from typing import Tuple, Union
 import numpy as np
 from matplotlib import pyplot as plt
 import matplotlib.cm as cm
+from matplotlib.patches import Ellipse
 
 import swyft
 
@@ -440,6 +441,43 @@ def draw_DRP_samples(tup, ):#observations,n_draws,net_path,device,bounds,nbins,P
     return draws1d, draws2d, n_obs
 
 
+def draw_DRP_samples_fast(
+        net,
+        trainer,
+        samples,
+        prior_samples,
+        batch_size=1024,
+        ):
+    
+        repeat = len(prior_samples) // batch_size + (len(prior_samples) % batch_size > 0)
+        logratios1d, logratios2d = trainer.infer(
+            net,
+            samples.get_dataloader(batch_size=1,repeat=repeat),
+            prior_samples.get_dataloader(batch_size=batch_size),
+        )
+        
+        draws1d = {}
+        draws2d = {}
+        weights1d = {}
+        weights2d = {}
+    
+        for i, name in enumerate(logratios1d.parnames):
+                draws1d[name[0]] = np.zeros(shape=(len(prior_samples),len(samples),1))
+                for si in range(len(samples)):
+                    draws1d[name[0]][:,si,:] = np.array(logratios1d.params[si*len(prior_samples):(si+1)*len(prior_samples),i,:])
+                # print('yay')
+                weights1d[name[0]] = np.array([ np.exp(np.array(logratios1d.logratios[si*len(prior_samples):(si+1)*len(prior_samples),i]))  for si in range(len(samples))  ]).T
+                weights1d[name[0]] = weights1d[name[0]].shape[0]*weights1d[name[0]]/np.sum(weights1d[name[0]],axis=0)
+                
+        for i, names in enumerate(logratios2d.parnames):
+                draws2d[str(names)] = np.zeros(shape=(len(prior_samples),len(samples),2))
+                for si in range(len(samples)):
+                    draws2d[str(names)][:,si,:] = np.array(logratios2d.params[si*len(prior_samples):(si+1)*len(prior_samples),i,:])
+                weights2d[str(names)] = np.array([ np.exp(np.array(logratios2d.logratios[si*len(prior_samples):(si+1)*len(prior_samples),i]))  for si in range(len(samples))  ]).T
+                weights2d[str(names)] = weights2d[str(names)].shape[0]*weights2d[str(names)]/np.sum(weights2d[str(names)],axis=0)
+    
+        return draws1d, draws2d, weights1d, weights2d
+    
 
 
 
@@ -453,6 +491,7 @@ def get_drp_coverage(
     axes: Union[int,list] = 9,
     metric: str = "euclidean",
     maxy = 1,
+    markersize=70,
 ) -> Tuple[np.ndarray, np.ndarray]:
     """
     Estimates coverage with the distance to random point method.
@@ -500,10 +539,11 @@ def get_drp_coverage(
     if len(bounds) == 0:
         low = np.min(samples, axis=(0,1), keepdims=True)
         high = np.max(samples, axis=(0,1), keepdims=True)
+        
     else:
-        bounds = np.array(bounds)[np.newaxis,:,:]
-        low = bounds[np.newaxis,:,:,0]
-        high = bounds[np.newaxis,:,:,1]
+        bounds_temp = np.array(bounds)[np.newaxis,:,:]
+        low = bounds_temp[np.newaxis,:,:,0]
+        high = bounds_temp[np.newaxis,:,:,1]
     
     
     # Normalize
@@ -535,18 +575,13 @@ def get_drp_coverage(
             np.sum((references[np.newaxis] - samples) ** 2, axis=-1)
         )
         theta_distances = np.sqrt(np.sum((references - theta) ** 2, axis=-1))
+        
     elif metric == "manhattan":
         samples_distances = np.sum(np.abs(references[np.newaxis] - samples), axis=-1)
         theta_distances = np.sum(np.abs(references - theta), axis=-1)
     else:
         raise ValueError("metric must be either 'euclidean' or 'manhattan'")
 
-    
-
-    # print("samples_distances_shape: " + str(samples_distances.shape))
-    # print("theta_distances_shape: " + str(theta_distances.shape))
-
-    plot_margs = [0,1]                #Must be 2-Dimensional!
     
     if isinstance(axes,int): 
         n_figs = min(axes,samples.shape[1])                          
@@ -567,10 +602,17 @@ def get_drp_coverage(
     if not weights is None: cmap = cm.get_cmap('turbo')
     theta_plot = theta.copy()
     references_plot = references.copy()
-    theta_distances_plot = theta_distances.copy()
+    theta_distances_plot = np.array([theta_distances.copy(),theta_distances.copy()])
+    theta_plot[0,:,0] = theta[0,:,0]*(bounds[0][1]-bounds[0][0]) + bounds[0][0]
+    references_plot[:,0] = references[:,0]*(bounds[0][1]-bounds[0][0]) + bounds[0][0]
+    theta_distances_plot[0,:] = theta_distances[0,:]*(bounds[0][1]-bounds[0][0])
+    if num_dims > 1:
+        theta_plot[0,:,1] = theta[0,:,1]*(bounds[1][1]-bounds[1][0]) + bounds[1][0]
+        references_plot[:,1] = references[:,1]*(bounds[1][1]-bounds[1][0]) + bounds[1][0]
+        theta_distances_plot[1,:] = theta_distances[0,:]*(bounds[1][1]-bounds[1][0])
 
-
-
+    
+    zorder=1
     for i in range(n_figs):
         n_inside=0
         samples_plot_inside = samples_plot[  samples_distances[:,i] < theta_distances[0,i] , i, : ]
@@ -584,19 +626,15 @@ def get_drp_coverage(
             weights_inside = weights[samples_distances[:,i] < theta_distances[0,i],i]
             weights_outside = weights[samples_distances[:,i] >= theta_distances[0,i],i]
             n_inside = np.sum(np.ones(len(samples_plot_inside[:,0]))*weights_inside)
-            
-            # print(weights.shape)
-            # print(samples_plot_outside[:,0].shape)
-            # print(weights_outside.shape)
-            # print()
+
 
         if num_dims == 1:
             
             n_bins_1d = max(10,num_samples//500)
             bin_edges = np.linspace(0,1,n_bins_1d)
-            # bin_centers = (bin_edges[:-1]+bin_edges[1:])/2
 
             maxweight = np.max(weights[:,i])
+            minweight = np.max(weights[:,i])
 
             for ed in range(len(bin_edges)-1):
                 samples_plot_inside_temp = samples_plot_inside[bin_edges[ed]<=samples_plot_inside[:,0]]
@@ -615,20 +653,20 @@ def get_drp_coverage(
                 
                 num_samps_bin = lenin+lenout
 
-                samples_plot_inside_bin[:,0] = samples_plot_inside_bin[:,0]*(high.item()-low.item()) + low.item()
-                samples_plot_outside_bin[:,0] = samples_plot_outside_bin[:,0]*(high.item()-low.item()) + low.item()
+                samples_plot_inside_bin[:,0] = samples_plot_inside_bin[:,0]*(bounds[0][1]-bounds[0][0]) + bounds[0][0]
+                samples_plot_outside_bin[:,0] = samples_plot_outside_bin[:,0]*(bounds[0][1]-bounds[0][0]) + bounds[0][0]
                 
                 if weights is None:
-                    axes[i].scatter(samples_plot_inside_bin[:,0],np.random.uniform(num_samps_bin/num_samples,size=lenin),marker='x',color='c')
-                    axes[i].scatter(samples_plot_outside_bin[:,0],np.random.uniform(num_samps_bin/num_samples,size=lenout),marker='x',color='b')
+                    axes[i].scatter(samples_plot_inside_bin[:,0],np.random.uniform(num_samps_bin/num_samples,size=lenin),marker='x',color='c',zorder=zorder)
+                    axes[i].scatter(samples_plot_outside_bin[:,0],np.random.uniform(num_samps_bin/num_samples,size=lenout),marker='x',color='b',zorder=zorder)
                 else:
-                    axes[i].scatter(samples_plot_inside_bin[:,0],np.random.uniform(0,maxy*weights_in_bin/(maxweight)),marker='x',color=cmap(weights_in_bin/num_samples))
-                    axes[i].scatter(samples_plot_outside_bin[:,0],np.random.uniform(0,maxy*weights_not_in_bin/(maxweight)),marker='x',color=cmap(weights_not_in_bin/num_samples),alpha=0.5)
+                    markersizes_inside = markersize*weights_in_bin**0.5
+                    markersizes_outside = markersize*weights_not_in_bin**0.5
+                    axes[i].scatter(samples_plot_inside_bin[:,0],np.random.uniform(0,maxy*weights_in_bin/(maxweight)),s=markersizes_inside,marker='.',color='c',zorder=zorder)
+                    axes[i].scatter(samples_plot_outside_bin[:,0],np.random.uniform(0,maxy*weights_not_in_bin/(maxweight)),s=markersizes_outside,marker='.',color='b',zorder=zorder)
+                    # axes[i].scatter(samples_plot_inside_bin[:,0],np.random.uniform(0,maxy,size=len(weights_in_bin)),s=markersizes_inside,marker='.',color='c',zorder=2)
+                    # axes[i].scatter(samples_plot_outside_bin[:,0],np.random.uniform(0,maxy,size=len(weights_not_in_bin)),s=markersizes_outside,marker='.',color='b',zorder=2)
               
-            theta_plot[0,i,0] = theta[0,i,0]*(high.item()-low.item()) + low.item()
-            references_plot[i,0] = references[i,0]*(high.item()-low.item()) + low.item()
-            theta_distances_plot[0,i] = theta_distances[0,i]*(high.item()-low.item())
-
                 
             axes[i].axvline(theta_plot[0,i,0],color='r')
             axes[i].axvline(references_plot[i,0],color='g')
@@ -636,37 +674,50 @@ def get_drp_coverage(
             axes[i].axvline(references_plot[i,0]+theta_distances_plot[0,i],color='r',linestyle=":")
             if len(theta_names) >= 1:
                 axes[i].set_xlabel(theta_names[0])
-            axes[i].set_title('Samples in $\Theta_{{DRP}}$: {:.0f}/{:.0f} = {:.0f}%'.format(n_inside,num_samples, 100*n_inside/num_samples))
+            axes[i].set_title('Samples in $\Theta_{{DRP}}$: {:.1f}/{:.0f} = {:.1f}%'.format(n_inside,num_samples, 100*n_inside/num_samples))
+            axes[i].set_title('Samples in $\Theta_{{DRP}}$: {:.1f}%'.format(100*n_inside/num_samples))
             axes[i].set_yticks([])
 
 
         
         if num_dims == 2:
             
-            if weights is None:
-                axes[i].scatter(samples_plot_inside[:,0],samples_plot_inside[:,1],marker='x',color='c')
-                axes[i].scatter(samples_plot_outside[:,0],samples_plot_outside[:,1],marker='x',color='b')
-            else:
-                axes[i].scatter(samples_plot_inside[:,0],samples_plot_inside[:,1],marker='x',color=cmap(weights_inside[:,i]/num_samples),)
-                axes[i].scatter(samples_plot_outside[:,0],samples_plot_outside[:,1],marker='x',color=cmap(weights_outside[:,i]/num_samples),alpha=0.5,)
-            
-            
-            
-            axes[i].plot(theta[0,i,plot_margs[0]], theta[0,i,plot_margs[1]],'ro')
-            axes[i].scatter(references[i,plot_margs[0]], references[i,plot_margs[1]],color='g',marker='+',s=80,linewidths=2.5)
-            circle = plt.Circle((references[i,plot_margs[0]],references[i,plot_margs[1]]), theta_distances[0,i], fill=0, color='r')
+            # print(references)
+            # print(samples_plot_inside)
+            samples_plot_inside[:,0] = samples_plot_inside[:,0]*(bounds[0][1]-bounds[0][0]) + bounds[0][0]
+            samples_plot_inside[:,1] = samples_plot_inside[:,1]*(bounds[1][1]-bounds[1][0]) + bounds[1][0]
+            samples_plot_outside[:,0] = samples_plot_outside[:,0]*(bounds[0][1]-bounds[0][0]) + bounds[0][0]
+            samples_plot_outside[:,1] = samples_plot_outside[:,1]*(bounds[1][1]-bounds[1][0]) + bounds[1][0]
+
+
+            # circle = plt.Circle((references_plot[i,0],references_plot[i,1]), theta_distances_plot[0,i], fill=0, color='r')
+            circle = Ellipse((references_plot[i,0],references_plot[i,1]), 2*theta_distances_plot[0,i],2*theta_distances_plot[1,i], fill=0, color='r',zorder=1)
             axes[i].add_patch(circle)
-            axes[i].set_xlim([-0.1, 1.1])
-            axes[i].set_ylim([-0.1, 1.1])
+
+            if weights is None:
+                axes[i].scatter(samples_plot_inside[:,0],samples_plot_inside[:,1],marker='x',color='c',zorder=zorder)
+                axes[i].scatter(samples_plot_outside[:,0],samples_plot_outside[:,1],marker='x',color='b',zorder=zorder)
+            else:
+                markersizes_inside = markersize*weights_inside**0.5
+                markersizes_outside = markersize*weights_outside**0.5
+                axes[i].scatter(samples_plot_inside[:,0],samples_plot_inside[:,1],s=markersizes_inside,marker='.',color='c',zorder=zorder)
+                axes[i].scatter(samples_plot_outside[:,0],samples_plot_outside[:,1],s=markersizes_outside,marker='.',color='b',zorder=zorder)
+            
+            
+            axes[i].scatter(theta_plot[0,i,0], theta_plot[0,i,1],color='r',marker='x',s=80,linewidths=2.5,zorder=2)
+            axes[i].scatter(references_plot[i,0], references_plot[i,1],color='g',marker='+',s=80,linewidths=2.5,zorder=2)
+            # axes[i].set_xlim([-0.1, 1.1])
+            # axes[i].set_ylim([-0.1, 1.1])
             if len(theta_names) >= 2:
                 axes[i].set_xlabel(theta_names.split(',')[0].split('[')[1])
                 axes[i].set_ylabel(theta_names.split(',')[1].split(']')[0])
-            axes[i].set_aspect('equal', adjustable='box')
-            axes[i].plot([0, 0],[0, 1], ':' , c='0.5')
-            axes[i].plot([0, 1],[0, 0], ':' , c='0.5')
-            axes[i].plot([0, 1],[1, 1], ':' , c='0.5')
-            axes[i].plot([1, 1],[0, 1], ':' , c='0.5')
-            axes[i].set_title('Samples in $\Theta_{{DRP}}$: {:.0f}/{:.0f} = {:.0f}%'.format(n_inside,len(samples[:,i,plot_margs[0]]), 100*n_inside/len(samples[:,i,plot_margs[0]])))
+            # axes[i].set_aspect('equal', adjustable='box')
+            # axes[i].plot([bounds[0][0], bounds[1][0]],[bounds[0][0], bounds[1][1]], ':' , c='0.5')
+            # axes[i].plot([bounds[0][0], bounds[1][1]],[bounds[0][0], bounds[1][0]], ':' , c='0.5')
+            # axes[i].plot([bounds[0][0], bounds[1][1]],[bounds[0][1], bounds[1][1]], ':' , c='0.5')
+            # axes[i].plot([bounds[0][1], bounds[1][1]],[bounds[0][0], bounds[1][1]], ':' , c='0.5')
+            # axes[i].set_title('Samples in $\Theta_{{DRP}}$: {:.1f}/{:.0f} = {:.1f}%'.format(n_inside,len(samples[:,i,0]), 100*n_inside/len(samples[:,i,0])))
+            axes[i].set_title('Samples in $\Theta_{{DRP}}$: {:.1f}%'.format(100*n_inside/len(samples[:,i,0])))
 
     # Compute coverage
     if weights is None:
