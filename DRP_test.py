@@ -17,6 +17,7 @@ A function to perform the DPR coverage test, written by Pablo Lemos et. al.
 from typing import Tuple, Union
 
 import numpy as np
+from scipy.stats import norm
 from matplotlib import pyplot as plt
 import matplotlib.cm as cm
 from matplotlib.patches import Ellipse
@@ -80,7 +81,8 @@ class Timer():
         m = int((s-3600*h)/60)
         s = int(s-3600*h-60*m)
         return h, m, s
-    
+  
+stdnorm = norm()
     
 def draw_prior_samples(tup):
     A = tup[0]
@@ -490,6 +492,7 @@ def get_drp_coverage(
     theta_names: list[str]=[],
     axes: Union[int,list] = 9,
     metric: str = "euclidean",
+    intermediate_figures=False,
     maxy = 1,
     markersize=70,
 ) -> Tuple[np.ndarray, np.ndarray]:
@@ -583,22 +586,7 @@ def get_drp_coverage(
         raise ValueError("metric must be either 'euclidean' or 'manhattan'")
 
     
-    if isinstance(axes,int): 
-        n_figs = min(axes,samples.shape[1])                          
-        figures = list(np.zeros(n_figs))
-        axes = list(np.zeros(n_figs))
-        for i in range(len(figures)):
-            figures[i], axes[i] = plt.subplots()
-            axes[i].set_xlim([0,1])
-            axes[i].set_ylim([0,1])
-    else:                                         #could use some error handling
-        n_figs = min(len(axes),samples.shape[1])
-        figures = None
 
-
-
-    samples_plot = samples[:,:n_figs,:]
-    
     if not weights is None: cmap = cm.get_cmap('turbo')
     theta_plot = theta.copy()
     references_plot = references.copy()
@@ -611,113 +599,128 @@ def get_drp_coverage(
         references_plot[:,1] = references[:,1]*(bounds[1][1]-bounds[1][0]) + bounds[1][0]
         theta_distances_plot[1,:] = theta_distances[0,:]*(bounds[1][1]-bounds[1][0])
 
-    
-    zorder=1
-    for i in range(n_figs):
-        n_inside=0
-        samples_plot_inside = samples_plot[  samples_distances[:,i] < theta_distances[0,i] , i, : ]
-        samples_plot_outside = samples_plot[  samples_distances[:,i] >= theta_distances[0,i], i, :  ]
+    figures = None
+    if intermediate_figures:
         
-        
-        
-        if weights is None:
-            n_inside = len(samples_plot_inside[:,0])
-        else:
-            weights_inside = weights[samples_distances[:,i] < theta_distances[0,i],i]
-            weights_outside = weights[samples_distances[:,i] >= theta_distances[0,i],i]
-            n_inside = np.sum(np.ones(len(samples_plot_inside[:,0]))*weights_inside)
+        if isinstance(axes,int): 
+            n_figs = min(axes,samples.shape[1])                          
+            figures = list(np.zeros(n_figs))
+            axes = list(np.zeros(n_figs))
+            for i in range(len(figures)):
+                figures[i], axes[i] = plt.subplots()
+                axes[i].set_xlim([0,1])
+                axes[i].set_ylim([0,1])
+        else:                                         #could use some error handling
+            n_figs = min(len(axes),samples.shape[1])
 
-
-        if num_dims == 1:
+        samples_plot = samples[:,:n_figs,:]
+        
+        zorder=1
+        for i in range(n_figs):
+            n_inside=0
+            samples_plot_inside = samples_plot[  samples_distances[:,i] < theta_distances[0,i] , i, : ]
+            samples_plot_outside = samples_plot[  samples_distances[:,i] >= theta_distances[0,i], i, :  ]
             
-            n_bins_1d = max(10,num_samples//500)
-            bin_edges = np.linspace(0,1,n_bins_1d)
-
-            maxweight = np.max(weights[:,i])
-            minweight = np.max(weights[:,i])
-
-            for ed in range(len(bin_edges)-1):
-                samples_plot_inside_temp = samples_plot_inside[bin_edges[ed]<=samples_plot_inside[:,0]]
-                samples_plot_outside_temp = samples_plot_outside[bin_edges[ed]<=samples_plot_outside[:,0]]
-                samples_plot_inside_bin = samples_plot_inside_temp[bin_edges[ed+1]>samples_plot_inside_temp[:,0]]
-                samples_plot_outside_bin = samples_plot_outside_temp[ bin_edges[ed+1]>samples_plot_outside_temp[:,0]]
-
-                if not weights is None:
-                    weights_inside_temp = weights_inside[bin_edges[ed]<=samples_plot_inside[:,0]]
-                    weights_outside_temp = weights_outside[bin_edges[ed]<=samples_plot_outside[:,0]]
-                    weights_in_bin = weights_inside_temp[bin_edges[ed+1]>samples_plot_inside_temp[:,0]]
-                    weights_not_in_bin = weights_outside_temp[ bin_edges[ed+1]>samples_plot_outside_temp[:,0]]
-                
-                lenin = len(samples_plot_inside_bin[:,0])
-                lenout = len(samples_plot_outside_bin[:,0])
-                
-                num_samps_bin = lenin+lenout
-
-                samples_plot_inside_bin[:,0] = samples_plot_inside_bin[:,0]*(bounds[0][1]-bounds[0][0]) + bounds[0][0]
-                samples_plot_outside_bin[:,0] = samples_plot_outside_bin[:,0]*(bounds[0][1]-bounds[0][0]) + bounds[0][0]
-                
-                if weights is None:
-                    axes[i].scatter(samples_plot_inside_bin[:,0],np.random.uniform(num_samps_bin/num_samples,size=lenin),marker='x',color='c',zorder=zorder)
-                    axes[i].scatter(samples_plot_outside_bin[:,0],np.random.uniform(num_samps_bin/num_samples,size=lenout),marker='x',color='b',zorder=zorder)
-                else:
-                    markersizes_inside = markersize*weights_in_bin**0.5
-                    markersizes_outside = markersize*weights_not_in_bin**0.5
-                    axes[i].scatter(samples_plot_inside_bin[:,0],np.random.uniform(0,maxy*weights_in_bin/(maxweight)),s=markersizes_inside,marker='.',color='c',zorder=zorder)
-                    axes[i].scatter(samples_plot_outside_bin[:,0],np.random.uniform(0,maxy*weights_not_in_bin/(maxweight)),s=markersizes_outside,marker='.',color='b',zorder=zorder)
-                    # axes[i].scatter(samples_plot_inside_bin[:,0],np.random.uniform(0,maxy,size=len(weights_in_bin)),s=markersizes_inside,marker='.',color='c',zorder=2)
-                    # axes[i].scatter(samples_plot_outside_bin[:,0],np.random.uniform(0,maxy,size=len(weights_not_in_bin)),s=markersizes_outside,marker='.',color='b',zorder=2)
-              
-                
-            axes[i].axvline(theta_plot[0,i,0],color='r')
-            axes[i].axvline(references_plot[i,0],color='g')
-            axes[i].axvline(references_plot[i,0]-theta_distances_plot[0,i],color='r',linestyle=":")
-            axes[i].axvline(references_plot[i,0]+theta_distances_plot[0,i],color='r',linestyle=":")
-            if len(theta_names) >= 1:
-                axes[i].set_xlabel(theta_names[0])
-            axes[i].set_title('Samples in $\Theta_{{DRP}}$: {:.1f}/{:.0f} = {:.1f}%'.format(n_inside,num_samples, 100*n_inside/num_samples))
-            axes[i].set_title('Samples in $\Theta_{{DRP}}$: {:.1f}%'.format(100*n_inside/num_samples))
-            axes[i].set_yticks([])
-
-
-        
-        if num_dims == 2:
             
-            # print(references)
-            # print(samples_plot_inside)
-            samples_plot_inside[:,0] = samples_plot_inside[:,0]*(bounds[0][1]-bounds[0][0]) + bounds[0][0]
-            samples_plot_inside[:,1] = samples_plot_inside[:,1]*(bounds[1][1]-bounds[1][0]) + bounds[1][0]
-            samples_plot_outside[:,0] = samples_plot_outside[:,0]*(bounds[0][1]-bounds[0][0]) + bounds[0][0]
-            samples_plot_outside[:,1] = samples_plot_outside[:,1]*(bounds[1][1]-bounds[1][0]) + bounds[1][0]
-
-
-            # circle = plt.Circle((references_plot[i,0],references_plot[i,1]), theta_distances_plot[0,i], fill=0, color='r')
-            circle = Ellipse((references_plot[i,0],references_plot[i,1]), 2*theta_distances_plot[0,i],2*theta_distances_plot[1,i], fill=0, color='r',zorder=1)
-            axes[i].add_patch(circle)
-
+            
             if weights is None:
-                axes[i].scatter(samples_plot_inside[:,0],samples_plot_inside[:,1],marker='x',color='c',zorder=zorder)
-                axes[i].scatter(samples_plot_outside[:,0],samples_plot_outside[:,1],marker='x',color='b',zorder=zorder)
+                n_inside = len(samples_plot_inside[:,0])
             else:
-                markersizes_inside = markersize*weights_inside**0.5
-                markersizes_outside = markersize*weights_outside**0.5
-                axes[i].scatter(samples_plot_inside[:,0],samples_plot_inside[:,1],s=markersizes_inside,marker='.',color='c',zorder=zorder)
-                axes[i].scatter(samples_plot_outside[:,0],samples_plot_outside[:,1],s=markersizes_outside,marker='.',color='b',zorder=zorder)
+                weights_inside = weights[samples_distances[:,i] < theta_distances[0,i],i]
+                weights_outside = weights[samples_distances[:,i] >= theta_distances[0,i],i]
+                n_inside = np.sum(np.ones(len(samples_plot_inside[:,0]))*weights_inside)
+    
+    
+            if num_dims == 1:
+                
+                n_bins_1d = max(10,num_samples//500)
+                bin_edges = np.linspace(0,1,n_bins_1d)
+    
+                maxweight = np.max(weights[:,i])
+                minweight = np.max(weights[:,i])
+    
+                for ed in range(len(bin_edges)-1):
+                    samples_plot_inside_temp = samples_plot_inside[bin_edges[ed]<=samples_plot_inside[:,0]]
+                    samples_plot_outside_temp = samples_plot_outside[bin_edges[ed]<=samples_plot_outside[:,0]]
+                    samples_plot_inside_bin = samples_plot_inside_temp[bin_edges[ed+1]>samples_plot_inside_temp[:,0]]
+                    samples_plot_outside_bin = samples_plot_outside_temp[ bin_edges[ed+1]>samples_plot_outside_temp[:,0]]
+    
+                    if not weights is None:
+                        weights_inside_temp = weights_inside[bin_edges[ed]<=samples_plot_inside[:,0]]
+                        weights_outside_temp = weights_outside[bin_edges[ed]<=samples_plot_outside[:,0]]
+                        weights_in_bin = weights_inside_temp[bin_edges[ed+1]>samples_plot_inside_temp[:,0]]
+                        weights_not_in_bin = weights_outside_temp[ bin_edges[ed+1]>samples_plot_outside_temp[:,0]]
+                    
+                    lenin = len(samples_plot_inside_bin[:,0])
+                    lenout = len(samples_plot_outside_bin[:,0])
+                    
+                    num_samps_bin = lenin+lenout
+    
+                    samples_plot_inside_bin[:,0] = samples_plot_inside_bin[:,0]*(bounds[0][1]-bounds[0][0]) + bounds[0][0]
+                    samples_plot_outside_bin[:,0] = samples_plot_outside_bin[:,0]*(bounds[0][1]-bounds[0][0]) + bounds[0][0]
+                    
+                    if weights is None:
+                        axes[i].scatter(samples_plot_inside_bin[:,0],np.random.uniform(num_samps_bin/num_samples,size=lenin),marker='x',color='c',zorder=zorder)
+                        axes[i].scatter(samples_plot_outside_bin[:,0],np.random.uniform(num_samps_bin/num_samples,size=lenout),marker='x',color='b',zorder=zorder)
+                    else:
+                        markersizes_inside = markersize*weights_in_bin**0.5
+                        markersizes_outside = markersize*weights_not_in_bin**0.5
+                        axes[i].scatter(samples_plot_inside_bin[:,0],np.random.uniform(0,maxy*weights_in_bin/(maxweight)),s=markersizes_inside,marker='.',color='c',zorder=zorder)
+                        axes[i].scatter(samples_plot_outside_bin[:,0],np.random.uniform(0,maxy*weights_not_in_bin/(maxweight)),s=markersizes_outside,marker='.',color='b',zorder=zorder)
+                        # axes[i].scatter(samples_plot_inside_bin[:,0],np.random.uniform(0,maxy,size=len(weights_in_bin)),s=markersizes_inside,marker='.',color='c',zorder=2)
+                        # axes[i].scatter(samples_plot_outside_bin[:,0],np.random.uniform(0,maxy,size=len(weights_not_in_bin)),s=markersizes_outside,marker='.',color='b',zorder=2)
+                  
+                    
+                axes[i].axvline(theta_plot[0,i,0],color='r')
+                axes[i].axvline(references_plot[i,0],color='g')
+                axes[i].axvline(references_plot[i,0]-theta_distances_plot[0,i],color='r',linestyle=":")
+                axes[i].axvline(references_plot[i,0]+theta_distances_plot[0,i],color='r',linestyle=":")
+                if len(theta_names) >= 1:
+                    axes[i].set_xlabel(theta_names[0])
+                axes[i].set_title('Samples in $\Theta_{{DRP}}$: {:.1f}/{:.0f} = {:.1f}%'.format(n_inside,num_samples, 100*n_inside/num_samples))
+                axes[i].set_title('Samples in $\Theta_{{DRP}}$: {:.1f}%'.format(100*n_inside/num_samples))
+                axes[i].set_yticks([])
+    
+    
             
-            
-            axes[i].scatter(theta_plot[0,i,0], theta_plot[0,i,1],color='r',marker='x',s=80,linewidths=2.5,zorder=2)
-            axes[i].scatter(references_plot[i,0], references_plot[i,1],color='g',marker='+',s=80,linewidths=2.5,zorder=2)
-            # axes[i].set_xlim([-0.1, 1.1])
-            # axes[i].set_ylim([-0.1, 1.1])
-            if len(theta_names) >= 2:
-                axes[i].set_xlabel(theta_names.split(',')[0].split('[')[1])
-                axes[i].set_ylabel(theta_names.split(',')[1].split(']')[0])
-            # axes[i].set_aspect('equal', adjustable='box')
-            # axes[i].plot([bounds[0][0], bounds[1][0]],[bounds[0][0], bounds[1][1]], ':' , c='0.5')
-            # axes[i].plot([bounds[0][0], bounds[1][1]],[bounds[0][0], bounds[1][0]], ':' , c='0.5')
-            # axes[i].plot([bounds[0][0], bounds[1][1]],[bounds[0][1], bounds[1][1]], ':' , c='0.5')
-            # axes[i].plot([bounds[0][1], bounds[1][1]],[bounds[0][0], bounds[1][1]], ':' , c='0.5')
-            # axes[i].set_title('Samples in $\Theta_{{DRP}}$: {:.1f}/{:.0f} = {:.1f}%'.format(n_inside,len(samples[:,i,0]), 100*n_inside/len(samples[:,i,0])))
-            axes[i].set_title('Samples in $\Theta_{{DRP}}$: {:.1f}%'.format(100*n_inside/len(samples[:,i,0])))
+            if num_dims == 2:
+                
+                # print(references)
+                # print(samples_plot_inside)
+                samples_plot_inside[:,0] = samples_plot_inside[:,0]*(bounds[0][1]-bounds[0][0]) + bounds[0][0]
+                samples_plot_inside[:,1] = samples_plot_inside[:,1]*(bounds[1][1]-bounds[1][0]) + bounds[1][0]
+                samples_plot_outside[:,0] = samples_plot_outside[:,0]*(bounds[0][1]-bounds[0][0]) + bounds[0][0]
+                samples_plot_outside[:,1] = samples_plot_outside[:,1]*(bounds[1][1]-bounds[1][0]) + bounds[1][0]
+    
+    
+                # circle = plt.Circle((references_plot[i,0],references_plot[i,1]), theta_distances_plot[0,i], fill=0, color='r')
+                circle = Ellipse((references_plot[i,0],references_plot[i,1]), 2*theta_distances_plot[0,i],2*theta_distances_plot[1,i], fill=0, color='r',zorder=1)
+                axes[i].add_patch(circle)
+    
+                if weights is None:
+                    axes[i].scatter(samples_plot_inside[:,0],samples_plot_inside[:,1],marker='x',color='c',zorder=zorder)
+                    axes[i].scatter(samples_plot_outside[:,0],samples_plot_outside[:,1],marker='x',color='b',zorder=zorder)
+                else:
+                    markersizes_inside = markersize*weights_inside**0.5
+                    markersizes_outside = markersize*weights_outside**0.5
+                    axes[i].scatter(samples_plot_inside[:,0],samples_plot_inside[:,1],s=markersizes_inside,marker='.',color='c',zorder=zorder)
+                    axes[i].scatter(samples_plot_outside[:,0],samples_plot_outside[:,1],s=markersizes_outside,marker='.',color='b',zorder=zorder)
+                
+                
+                axes[i].scatter(theta_plot[0,i,0], theta_plot[0,i,1],color='r',marker='x',s=80,linewidths=2.5,zorder=2)
+                axes[i].scatter(references_plot[i,0], references_plot[i,1],color='g',marker='+',s=80,linewidths=2.5,zorder=2)
+                # axes[i].set_xlim([-0.1, 1.1])
+                # axes[i].set_ylim([-0.1, 1.1])
+                if len(theta_names) >= 2:
+                    axes[i].set_xlabel(theta_names.split(',')[0].split('[')[1])
+                    axes[i].set_ylabel(theta_names.split(',')[1].split(']')[0])
+                # axes[i].set_aspect('equal', adjustable='box')
+                # axes[i].plot([bounds[0][0], bounds[1][0]],[bounds[0][0], bounds[1][1]], ':' , c='0.5')
+                # axes[i].plot([bounds[0][0], bounds[1][1]],[bounds[0][0], bounds[1][0]], ':' , c='0.5')
+                # axes[i].plot([bounds[0][0], bounds[1][1]],[bounds[0][1], bounds[1][1]], ':' , c='0.5')
+                # axes[i].plot([bounds[0][1], bounds[1][1]],[bounds[0][0], bounds[1][1]], ':' , c='0.5')
+                # axes[i].set_title('Samples in $\Theta_{{DRP}}$: {:.1f}/{:.0f} = {:.1f}%'.format(n_inside,len(samples[:,i,0]), 100*n_inside/len(samples[:,i,0])))
+                axes[i].set_title('Samples in $\Theta_{{DRP}}$: {:.1f}%'.format(100*n_inside/len(samples[:,i,0])))
 
     # Compute coverage
     if weights is None:
@@ -830,7 +833,371 @@ def plot_DRP_coverage(references_1d,references_2d,draws1d,draws2d,truths,truth_n
 
 
 
+def get_drp_coverage_torch(
+    samples: np.ndarray,
+    theta: np.ndarray,
+    references: Union[str, np.ndarray] = "random",
+    weights = None,
+    bounds: Union[list[float],np.ndarray] = [],
+    theta_names: list[str]=[],
+    axes: Union[int,list] = 9,
+    metric: str = "euclidean",
+    intermediate_figures=False,
+    generate_zz = True,
+    maxy = 1,
+    markersize=70,
+    device = 'cpu',
+    bins=None,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Estimates coverage with the distance to random point method.
 
+    Reference: `Lemos, Coogan et al 2023 <https://arxiv.org/abs/2302.03026>`_
+
+    Args:
+        samples: the samples to compute the coverage of, with shape ``(n_samples, n_sims, n_dims)``.
+        theta: the true parameter values for each samples, with shape ``(n_sims, n_dims)``.
+        references: the reference points to use for the DRP regions, with shape
+            ``(n_references, n_sims)``, or the string ``"random"``. If the later, then
+            the reference points are chosen randomly from the unit hypercube over
+            the parameter space.
+        metric: the metric to use when computing the distance. Can be ``"euclidean"`` or
+            ``"manhattan"``.
+
+    Returns:
+        Credibility values (``alpha``) and expected coverage probability (``ecp``).
+    """
+
+    
+    samples = torch.tensor(samples,device=device)
+    theta = torch.tensor(theta,device=device)
+    references = torch.tensor(references,device=device)
+    weights = torch.tensor(weights,device=device)
+       
+    # Check that shapes are correct
+    if samples.ndim != 3:
+        raise ValueError("samples must be a 3D array")
+
+    if theta.ndim != 2:
+        raise ValueError("theta must be a 2D array")
+
+    num_samples = samples.shape[0]
+    num_sims = samples.shape[1]
+    num_dims = samples.shape[2]
+
+    if theta.shape[0] != num_sims:
+        raise ValueError("theta must have the same number of rows as samples")
+
+    if theta.shape[1] != num_dims:
+        raise ValueError("theta must have the same number of columns as samples")
+
+    # Reshape theta
+    theta = theta[None, :, :]
+
+    if len(bounds) == 0:
+        low = torch.min(samples, axis=(0,1), keepdims=True, device=device)
+        high = torch.max(samples, axis=(0,1), keepdims=True, device=device)
+        
+    else:
+        bounds_temp = torch.tensor(bounds, device=device)[None,:,:]
+        low = bounds_temp[None,:,:,0]
+        high = bounds_temp[None,:,:,1]
+    
+    # Normalize
+    samples = (samples - low) / (high - low)
+    theta = (theta - low) / (high - low)
+
+    # Generate reference points
+    if isinstance(references, str) and references == "random":
+        references = torch.rand((num_sims, num_dims), device=device)
+    else:
+        # assert isinstance(references, np.ndarray)  # to quiet pyright
+        if references.ndim != 2:
+            raise ValueError("references must be a 2D array")
+
+        if references.shape[0] != num_sims:
+            raise ValueError("references must have the same number of rows as samples")
+
+        if references.shape[1] != num_dims:
+            raise ValueError(
+                "references must have the same number of columns as samples"
+            )
+
+    # Compute distances
+    if metric == "euclidean":
+        samples_distances = torch.sqrt(
+            torch.sum((references[None] - samples) ** 2, axis=-1)
+        )
+        theta_distances = torch.sqrt(torch.sum((references - theta) ** 2, axis=-1))
+        
+    elif metric == "manhattan":
+        samples_distances = torch.sum(np.abs(references[None] - samples), axis=-1)
+        theta_distances = torch.sum(np.abs(references - theta), axis=-1)
+    else:
+        raise ValueError("metric must be either 'euclidean' or 'manhattan'")
+
+
+    ###### Figures #######
+
+    figures = None
+    if intermediate_figures:
+        
+        theta_plot = copy.deepcopy(theta)
+        references_plot = copy.deepcopy(references)
+        theta_distances_plot = torch.stack([copy.deepcopy(theta_distances),copy.deepcopy(theta_distances)])
+        theta_plot[0,:,0] = theta[0,:,0]*(bounds[0][1]-bounds[0][0]) + bounds[0][0]
+        references_plot[:,0] = references[:,0]*(bounds[0][1]-bounds[0][0]) + bounds[0][0]
+        theta_distances_plot[0,:] = theta_distances[0,:]*(bounds[0][1]-bounds[0][0])
+        if num_dims > 1:
+            theta_plot[0,:,1] = theta[0,:,1]*(bounds[1][1]-bounds[1][0]) + bounds[1][0]
+            references_plot[:,1] = references[:,1]*(bounds[1][1]-bounds[1][0]) + bounds[1][0]
+            theta_distances_plot[1,:] = theta_distances[0,:]*(bounds[1][1]-bounds[1][0])
+        
+        if isinstance(axes,int): 
+            n_figs = min(axes,samples.shape[1])                          
+            figures = list(np.zeros(n_figs))
+            axes = list(np.zeros(n_figs))
+            for i in range(len(figures)):
+                figures[i], axes[i] = plt.subplots()
+                axes[i].set_xlim([0,1])
+                axes[i].set_ylim([0,1])
+        else:                                         #could use some error handling
+            n_figs = min(len(axes),samples.shape[1])
+
+        samples_plot = samples[:,:n_figs,:]
+        
+        zorder=1
+        for i in range(n_figs):
+            n_inside=0
+            samples_plot_inside = samples_plot[  samples_distances[:,i] < theta_distances[0,i] , i, : ]
+            samples_plot_outside = samples_plot[  samples_distances[:,i] >= theta_distances[0,i], i, :  ]
+            
+            if weights is None:
+                n_inside = len(samples_plot_inside[:,0])
+            else:
+                weights_inside = weights[samples_distances[:,i] < theta_distances[0,i],i]
+                weights_outside = weights[samples_distances[:,i] >= theta_distances[0,i],i]
+                n_inside = np.sum(np.ones(len(samples_plot_inside[:,0]))*weights_inside)
+    
+    
+            if num_dims == 1:
+                
+                n_bins_1d = max(10,num_samples//500)
+                bin_edges = np.linspace(0,1,n_bins_1d)
+    
+                maxweight = np.max(weights[:,i])
+                minweight = np.max(weights[:,i])
+    
+                for ed in range(len(bin_edges)-1):
+                    samples_plot_inside_temp = samples_plot_inside[bin_edges[ed]<=samples_plot_inside[:,0]]
+                    samples_plot_outside_temp = samples_plot_outside[bin_edges[ed]<=samples_plot_outside[:,0]]
+                    samples_plot_inside_bin = samples_plot_inside_temp[bin_edges[ed+1]>samples_plot_inside_temp[:,0]]
+                    samples_plot_outside_bin = samples_plot_outside_temp[ bin_edges[ed+1]>samples_plot_outside_temp[:,0]]
+    
+                    if not weights is None:
+                        weights_inside_temp = weights_inside[bin_edges[ed]<=samples_plot_inside[:,0]]
+                        weights_outside_temp = weights_outside[bin_edges[ed]<=samples_plot_outside[:,0]]
+                        weights_in_bin = weights_inside_temp[bin_edges[ed+1]>samples_plot_inside_temp[:,0]]
+                        weights_not_in_bin = weights_outside_temp[ bin_edges[ed+1]>samples_plot_outside_temp[:,0]]
+                    
+                    lenin = len(samples_plot_inside_bin[:,0])
+                    lenout = len(samples_plot_outside_bin[:,0])
+                    
+                    num_samps_bin = lenin+lenout
+    
+                    samples_plot_inside_bin[:,0] = samples_plot_inside_bin[:,0]*(bounds[0][1]-bounds[0][0]) + bounds[0][0]
+                    samples_plot_outside_bin[:,0] = samples_plot_outside_bin[:,0]*(bounds[0][1]-bounds[0][0]) + bounds[0][0]
+                    
+                    if weights is None:
+                        axes[i].scatter(samples_plot_inside_bin[:,0],np.random.uniform(num_samps_bin/num_samples,size=lenin),marker='x',color='c',zorder=zorder)
+                        axes[i].scatter(samples_plot_outside_bin[:,0],np.random.uniform(num_samps_bin/num_samples,size=lenout),marker='x',color='b',zorder=zorder)
+                    else:
+                        markersizes_inside = markersize*weights_in_bin**0.5
+                        markersizes_outside = markersize*weights_not_in_bin**0.5
+                        axes[i].scatter(samples_plot_inside_bin[:,0],np.random.uniform(0,maxy*weights_in_bin/(maxweight)),s=markersizes_inside,marker='.',color='c',zorder=zorder)
+                        axes[i].scatter(samples_plot_outside_bin[:,0],np.random.uniform(0,maxy*weights_not_in_bin/(maxweight)),s=markersizes_outside,marker='.',color='b',zorder=zorder)
+                  
+                    
+                axes[i].axvline(theta_plot[0,i,0],color='r')
+                axes[i].axvline(references_plot[i,0],color='g')
+                axes[i].axvline(references_plot[i,0]-theta_distances_plot[0,i],color='r',linestyle=":")
+                axes[i].axvline(references_plot[i,0]+theta_distances_plot[0,i],color='r',linestyle=":")
+                if len(theta_names) >= 1:
+                    axes[i].set_xlabel(theta_names[0])
+                axes[i].set_title('Samples in $\Theta_{{DRP}}$: {:.1f}/{:.0f} = {:.1f}%'.format(n_inside,num_samples, 100*n_inside/num_samples))
+                axes[i].set_title('Samples in $\Theta_{{DRP}}$: {:.1f}%'.format(100*n_inside/num_samples))
+                axes[i].set_yticks([])
+    
+    
+    
+            if num_dims == 2:
+                
+                samples_plot_inside[:,0] = samples_plot_inside[:,0]*(bounds[0][1]-bounds[0][0]) + bounds[0][0]
+                samples_plot_inside[:,1] = samples_plot_inside[:,1]*(bounds[1][1]-bounds[1][0]) + bounds[1][0]
+                samples_plot_outside[:,0] = samples_plot_outside[:,0]*(bounds[0][1]-bounds[0][0]) + bounds[0][0]
+                samples_plot_outside[:,1] = samples_plot_outside[:,1]*(bounds[1][1]-bounds[1][0]) + bounds[1][0]
+    
+                # circle = plt.Circle((references_plot[i,0],references_plot[i,1]), theta_distances_plot[0,i], fill=0, color='r')
+                circle = Ellipse((references_plot[i,0],references_plot[i,1]), 2*theta_distances_plot[0,i],2*theta_distances_plot[1,i], fill=0, color='r',zorder=1)
+                axes[i].add_patch(circle)
+    
+                if weights is None:
+                    axes[i].scatter(samples_plot_inside[:,0],samples_plot_inside[:,1],marker='x',color='c',zorder=zorder)
+                    axes[i].scatter(samples_plot_outside[:,0],samples_plot_outside[:,1],marker='x',color='b',zorder=zorder)
+                else:
+                    markersizes_inside = markersize*weights_inside**0.5
+                    markersizes_outside = markersize*weights_outside**0.5
+                    axes[i].scatter(samples_plot_inside[:,0],samples_plot_inside[:,1],s=markersizes_inside,marker='.',color='c',zorder=zorder)
+                    axes[i].scatter(samples_plot_outside[:,0],samples_plot_outside[:,1],s=markersizes_outside,marker='.',color='b',zorder=zorder)
+                
+                axes[i].scatter(theta_plot[0,i,0], theta_plot[0,i,1],color='r',marker='x',s=80,linewidths=2.5,zorder=2)
+                axes[i].scatter(references_plot[i,0], references_plot[i,1],color='g',marker='+',s=80,linewidths=2.5,zorder=2)
+                
+                if len(theta_names) >= 2:
+                    axes[i].set_xlabel(theta_names.split(',')[0].split('[')[1])
+                    axes[i].set_ylabel(theta_names.split(',')[1].split(']')[0])
+
+                axes[i].set_title('Samples in $\Theta_{{DRP}}$: {:.1f}%'.format(100*n_inside/len(samples[:,i,0])))
+
+
+    ###### Figures end #######
+    
+
+    # Compute coverage
+    if weights is None:
+        f = torch.sum((samples_distances < theta_distances), axis=0) / num_samples
+    else:
+        f = torch.sum((samples_distances < theta_distances)*weights, axis=0) / num_samples
+    f_pp=f.to('cpu')
+    
+    if bins is None: bins = min(50, num_sims // min(10,num_sims))
+    
+    # Compute expected coverage
+    h_pp = np.array(torch.histogram(f_pp, density=True, bins=bins, range=(0,1)).hist)
+    alpha_pp = np.linspace(0,1,bins+1)
+    num_sims_per_bin = num_sims/bins
+    uncertainty=3*num_sims_per_bin**(-0.5)
+    f_score = np.sum(((h_pp-1)/uncertainty)**2)/bins
+    dx_pp = alpha_pp[1] - alpha_pp[0]
+    ecp_pp = np.cumsum(h_pp) * dx_pp
+    
+    # print(num_sims)
+    # print(alpha_pp)
+    # print(num_sims_per_bin)
+    # print(uncertainty)
+    
+    f_zz = None
+    alpha_zz = None
+    ecp_zz = None
+    if generate_zz:
+        f_zz = stdnorm.ppf(0.5+f_pp/2)
+        max_f_zz = np.max(f_zz[np.invert(np.isinf(f_zz))])
+        f_zz = np.where(np.isinf(f_zz),max_f_zz,f_zz)
+        f_zz = np.where(np.isnan(f_zz),0,f_zz)
+        # f_zz = f_zz[np.invert(np.isinf(f_zz))]
+        # f_zz = f_zz[np.invert(np.isnan(f_zz))]
+        h_zz, alpha_zz = np.histogram(f_zz, density=True,range=(0,np.max(f_zz)), bins=bins)
+        dx_zz = alpha_zz[1] - alpha_zz[0]
+        ecp_zz = np.cumsum(h_zz) * dx_zz
+        ecp_zz = stdnorm.ppf(0.5+ecp_zz/2)
+
+    return ecp_pp, alpha_pp[1:], ecp_zz, alpha_zz[1:], f_pp, f_zz, f_score, figures
+
+
+
+
+
+def plot_DRP_coverage(references_1d,references_2d,draws1d,draws2d,truths,truth_names,bounds,
+                      ref_colors =['b','c','g','y','r','m',] ):
+
+    
+    ecp = [[{} for ref_list in references_1d],[{} for ref_list in references_2d]]
+    alpha = [[{} for ref_list in references_1d],[{} for ref_list in references_2d]]
+    f = [[{} for ref_list in references_1d],[{} for ref_list in references_2d]]
+    figs_cov = [[{} for ref_list in references_1d],[{} for ref_list in references_2d]]
+    
+    num_axes = 9
+    columns = 3
+    rows = int(np.ceil(num_axes/columns))
+
+    n_sims1d = references_1d[0].shape[0]
+    n_sims2d = references_2d[0].shape[0]
+    
+    for ref_i in range(len(references_1d)):
+        for i, name in enumerate(draws1d.keys()):
+            figs_cov[0][ref_i][name] = plt.figure(figsize = (4*columns, 4*rows))
+            for fig_i in range(min(num_axes,n_sims1d)): 
+                figs_cov[0][ref_i][name].add_subplot(rows, columns, fig_i+1)
+            figs_cov[0][ref_i][name].suptitle(name)
+            
+            ecp[0][ref_i][name], alpha[0][ref_i][name], f[0][ref_i][name], _ = get_drp_coverage(draws1d[name], 
+                                                                  truths[0][i],
+                                                                  theta_names=truth_names[0][i],
+                                                                  axes = figs_cov[0][ref_i][name].axes,
+                                                                  bounds = np.array(bounds[0])[[i]],
+                                                                  references = references_1d[ref_i],
+                                                                 )
+    
+    for ref_i in range(len(references_2d)): 
+        for i, names in enumerate(draws2d.keys()):
+            figs_cov[1][ref_i][names] = plt.figure(figsize = (4*columns, 4*rows))
+            for fig_i in range(min(num_axes,n_sims2d)): 
+                figs_cov[1][ref_i][names].add_subplot(rows, columns, fig_i+1)
+            figs_cov[1][ref_i][names].suptitle(names)
+            
+            ecp[1][ref_i][names], alpha[1][ref_i][names], f[1][ref_i][names], _ = get_drp_coverage(draws2d[names], 
+                                                                     truths[1][i],
+                                                                     theta_names=truth_names[1][i],
+                                                                     axes = figs_cov[1][ref_i][names].axes,
+                                                                     bounds = bounds[1][i],
+                                                                     references = references_2d[ref_i],
+                                                                    )
+    
+    
+    rows = len(draws1d.keys())
+    fig_DRP = plt.figure(figsize = (4*rows, 4*rows))
+    
+    
+    for i, name in enumerate(draws1d.keys()):
+    
+        fig_DRP.add_subplot(rows, rows, i+1+i*rows)
+        plt.plot([0,1],[0,1], 'k:')
+        plt.xlabel("Credibility level (alpha)")
+        plt.ylabel("Expected Coverage Probability (ECP)")
+        
+        for ref_i in range(len(references_1d)):
+             
+            ecp_ex = np.zeros(len(ecp[0][ref_i][name])+1)
+            alpha_ex = np.zeros(len(alpha[0][ref_i][name])+1)
+            ecp_ex[1:] = ecp[0][ref_i][name]
+            alpha_ex[1:] = alpha[0][ref_i][name]
+            plt.plot(alpha_ex, ecp_ex, ref_colors[ref_i])
+            
+    
+    row = 0
+    column = 0
+    for i, names in enumerate(draws2d.keys()):
+    
+        row+=1
+        if row >= rows:
+            column+=1
+            row = 1+column
+            
+        fig_DRP.add_subplot(rows, rows, rows*row+column+1)
+        plt.plot([0,1],[0,1], 'k:')
+        plt.xlabel("Credibility level (alpha)")
+        plt.ylabel("Expected Coverage Probability (ECP)")
+        
+        for ref_i in range(len(references_2d)):
+        
+            ecp_ex = np.zeros(len(ecp[1][ref_i][names])+1)
+            alpha_ex = np.zeros(len(alpha[1][ref_i][names])+1)
+            ecp_ex[1:] = ecp[1][ref_i][names]
+            alpha_ex[1:] = alpha[1][ref_i][names]
+            plt.plot(alpha_ex, ecp_ex, ref_colors[ref_i])
+
+    
+    return fig_DRP, figs_cov
 
 
 

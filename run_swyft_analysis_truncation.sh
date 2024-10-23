@@ -272,8 +272,11 @@ do
 					echo "Moved ${item} from run number $(($i - 1))"
 				elif [ $item == "truncation_record.pickle" ] ; then
 					if [ $use_old_truncations == 1 ] ; then
-						cp $file_name ${results_dir}
-						echo "Copied ${item} from run number $(($i - 1))"
+						mv $file_name ${results_dir}
+						echo "Moved ${item} from run number $(($i - 1))"
+					elif [ -e $use_old_truncations ] ; then
+						cp $use_old_trucations ${results_dir}/"truncation_record.pickle"
+						echo "Copied ${item} from $use_old_truncations"
 					fi
 				else
 					cp $file_name ${results_dir}	
@@ -372,12 +375,19 @@ fi
 
 # import store from elswhere, if so chosen
 if [[ -e "$use_old_sims" ]] ; then
-	echo -n "Importing the store $use_old_sims(.sync)... "
-	rsync -r $use_old_sims ${results_dir}/sim_output/store
-	rsync -r $use_old_sims.sync ${results_dir}/sim_output/store
-	rsync $use_old_sims.lock.file ${results_dir}/sim_output/store
-	echo done.
-	echo
+	if [[ -e "$use_old_sims.sync" ]] ; then
+		echo -n "Importing the store $use_old_sims(.sync)... "
+		rsync -r $use_old_sims ${results_dir}/sim_output/store
+		rsync -r $use_old_sims.sync ${results_dir}/sim_output/store
+		rsync $use_old_sims.lock.file ${results_dir}/sim_output/store
+		echo done.
+		echo
+	else
+		echo -n "Importing the store $use_old_sims... "
+		rsync -r $use_old_sims/ ${results_dir}/sim_output/store/
+		echo done.
+		echo
+	fi		
 fi
 
 

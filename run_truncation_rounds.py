@@ -20,7 +20,6 @@ import copy
 
 
 
-
    
 filename_variables = "config_variables.pickle"
 filename_phys = "physics_variables.pickle"
@@ -62,7 +61,8 @@ if __name__ == "__main__":
         truncation_dict['logratios_rounds'] = [[]]
 
     
-    which_grid_point = copy.copy(start_grid_test_at_count)-1
+    # which_grid_point = copy.copy(start_grid_test_at_count)-1
+    which_grid_point = -1
     
     # print("Which truncation: " + str(len( truncation_dict["logratios_rounds"][which_grid_point] )-1)) 
     
@@ -96,11 +96,16 @@ if __name__ == "__main__":
         # print("Which truncation: " + str(len( truncation_dict["logratios_rounds"][which_grid_point] )-1)) 
 
 
-        # Adding a grid point slolt in the record, if not already in place
-        if len(truncation_dict['logratios_rounds']) < which_grid_point+1:  
-            truncation_dict['bounds_rounds'].append([bounds,truncation_dict['bounds_rounds'][0][1]])
-            truncation_dict['logratios_rounds'].append([truncation_dict['logratios_rounds'][0][0]])
-            
+        # Adding a grid point slot in the record, if not already in place
+        while len(truncation_dict['logratios_rounds']) < which_grid_point+1:  
+            try:
+                truncation_dict['bounds_rounds'].append([bounds,truncation_dict['bounds_rounds'][0][1]])
+            except IndexError as IErr:
+                truncation_dict['bounds_rounds'].append([bounds,truncation_dict['bounds_rounds'][0][0]])
+            try:
+                truncation_dict['logratios_rounds'].append([truncation_dict['logratios_rounds'][0][0]])
+            except IndexError as IErr:
+                truncation_dict['logratios_rounds'].append([])
             
         # print("Which truncation: " + str(len( truncation_dict["logratios_rounds"][which_grid_point] )-1))    
             

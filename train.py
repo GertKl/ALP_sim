@@ -9,9 +9,12 @@ Created on Mon Feb  5 14:41:58 2024
 
 
 import swyft
+from swyft.plot.mass import _get_jefferys_interval as interval
 import numpy as np
 from ALP_quick_sim import ALP_sim
 from alp_swyft_simulator import ALP_SWYFT_Simulator
+from reference_functions import References
+from DRP_test import get_drp_coverage_torch, draw_DRP_samples_fast
 import pickle
 import argparse
 import importlib
@@ -20,6 +23,7 @@ import datetime
 import itertools
 import copy
 import os
+
 
 import torch
 torch.set_float32_matmul_precision('medium')
@@ -124,6 +128,7 @@ if __name__ == "__main__":
         raise ValueError("Store is empty!")
     all_samples = store.get_sample_store()
     samples = all_samples[:n_sim_round]
+    coverage_samples = all_samples[-n_sim_coverage:]
     
     print("Training on " + str(len(samples)) + " samples" )
     print("Store length: " + str(len(samples)))
@@ -310,19 +315,57 @@ if __name__ == "__main__":
 
         
         
+
+    n_drp_test_samps = 1000
+    n_drp_prior_test_samps=1_000
+    drp_test_samps = coverage_samples[-n_drp_test_samps:]
+    drp_prior_test_samps = prior_samples[-n_drp_prior_test_samps:]
+    
+    print('Drawing DRP samples...', flush=True, end="")
+    draws1d,draws2d,weights1d,weights2d = draw_DRP_samples_fast(
+            network,
+            trainer,
+            drp_test_samps,
+            drp_prior_test_samps,
+        )  
+    print('done.', flush=True)
+    
+    print('Computing references... ', flush=True, end="")
+    n_refs = 1000
+   
+    R = References()
+    
+    references_2d = [
+        R.references2D(drp_test_samps)[0] for _ in range(n_refs)
+    ]
+    
+    print('done.', flush=True)
         
         
+    ecp_pp = np.zeros((n_refs, min(50, n_drp_test_samps// min(10,n_drp_test_samps))    ))
+    alpha_pp = np.zeros((n_refs, min(50, n_drp_test_samps// min(10,n_drp_test_samps))    ))
+    
+    for ki,key in enumerate(draws2d.keys()): 
+        if ki==0: break
+    for ref_i in range(len(references_2d)):
+            
+        ecp_pp[ref_i,:], alpha_pp[ref_i,:], _, _, _, _, _ = get_drp_coverage_torch(
+                draws2d[key],
+                drp_test_samps['params'][:,[0,1]],
+                weights = weights2d[key],
+                theta_names=np.array(A.param_names)[[0,1]],
+                bounds = np.array(bounds_rounds[which_grid_point][which_truncation])[[0,1]],
+                references = references_2d[ref_i],
+                device='cuda'
+            )
         
+        if ref_i == 0: validation_sums = 0
+        uncertainty = (interval((alpha_pp[ref_i,:]*n_drp_test_samps).astype(int),n_drp_test_samps)[:,1]-interval((alpha_pp[ref_i,:]*n_drp_test_samps).astype(int),n_drp_test_samps)[:,0])/2
+        validation_sums += np.sum(((ecp_pp[ref_i,:]-alpha_pp[ref_i,:])/uncertainty)**2)/n_drp_test_samps
+
         
-        
-        
-        
-        
-        
-        
-        
-        
-        
+
+    print("DRP validation sum: " + str(validation_sums))
         
         
         

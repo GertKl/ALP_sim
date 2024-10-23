@@ -40,20 +40,23 @@ class Network(swyft.AdamWReduceLROnPlateau, swyft.SwyftModule):
         
         self.norm_power = swyft.networks.OnlineStandardizingLayer(torch.Size([169]), epsilon=0)
         
+        intermediate_data_width = int(2**(np.ceil((np.log2(data_width)+np.log2(data_features))/2)))
+        intermediate_power_width = int(2**(np.ceil((np.log2(power_width)+np.log2(power_features))/2)))
+        
         self.net_data = torch.nn.Sequential(
             torch.nn.Flatten(),
-            torch.nn.LazyLinear(64),
+            torch.nn.LazyLinear(data_width),
             torch.nn.ReLU(),
-            torch.nn.LazyLinear(64),
+            torch.nn.LazyLinear(intermediate_data_width),
             torch.nn.ReLU(),
             torch.nn.LazyLinear(data_features)
         )
 
         self.net_power = torch.nn.Sequential(
             torch.nn.Flatten(),
-            torch.nn.LazyLinear(64),
+            torch.nn.LazyLinear(power_width),
             torch.nn.ReLU(),
-            torch.nn.LazyLinear(64),
+            torch.nn.LazyLinear(intermediate_power_width),
             torch.nn.ReLU(),
             torch.nn.LazyLinear(power_features)
         )
